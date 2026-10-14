@@ -22,7 +22,7 @@ export const blockDistributionData = [
 export const recentDetections = [
   {
     id: 1,
-    timestamp: "2023-10-24 08:12:45",
+    timestamp: "2026-10-14 08:12:45",
     block: "Blok A",
     camera: "Cam A-01",
     status: "Matang",
@@ -31,7 +31,7 @@ export const recentDetections = [
   },
   {
     id: 2,
-    timestamp: "2023-10-24 08:11:30",
+    timestamp: "2026-10-14 08:11:30",
     block: "Blok B",
     camera: "Cam B-03",
     status: "Mentah",
@@ -40,7 +40,7 @@ export const recentDetections = [
   },
   {
     id: 3,
-    timestamp: "2023-10-24 08:09:15",
+    timestamp: "2026-10-14 08:09:15",
     block: "Blok A",
     camera: "Cam A-02",
     status: "Terlalu Matang/Busuk",
@@ -49,7 +49,7 @@ export const recentDetections = [
   },
   {
     id: 4,
-    timestamp: "2023-10-24 08:05:50",
+    timestamp: "2026-10-14 08:05:50",
     block: "Blok C",
     camera: "Cam C-01",
     status: "Matang",
@@ -58,7 +58,7 @@ export const recentDetections = [
   },
   {
     id: 5,
-    timestamp: "2023-10-24 08:02:10",
+    timestamp: "2026-10-14 08:02:10",
     block: "Blok B",
     camera: "Cam B-02",
     status: "Mentah",

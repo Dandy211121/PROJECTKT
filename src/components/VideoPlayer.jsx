@@ -1,257 +1,256 @@
-import { useState, useEffect, useRef } from 'react';
-import { Camera, Pause, Play, Maximize, Settings2 } from 'lucide-react';
-import { cn } from '../lib/utils';
-import * as tf from '@tensorflow/tfjs';
-import * as cocoSsd from '@tensorflow-models/coco-ssd';
+import { useEffect, useRef, useState } from "react";
+import { Camera, Maximize, Pause, Play, Settings2 } from "lucide-react";
+import { cn } from "../lib/utils";
 
-export function VideoPlayer({ showOverlayControl = false }) {
+const cameras = [
+  { name: "Cam A-01", block: "Blok A" },
+  { name: "Cam A-02", block: "Blok A" },
+  { name: "Cam B-01", block: "Blok B" },
+  { name: "Cam C-01", block: "Blok C" },
+];
+
+const statuses = [
+  { status: "Matang", type: "ripe" },
+  { status: "Mentah", type: "unripe" },
+  { status: "Busuk", type: "overripe" },
+];
+
+const toneClass = {
+  ripe: "bounding-box-gold",
+  unripe: "bounding-box-sky",
+  overripe: "bounding-box-ocean",
+};
+
+export function VideoPlayer({
+  showOverlayControl = false,
+  activeCam: selectedCamera,
+  onCameraChange,
+  timestamp = "2026-10-14 21:07:00",
+}) {
   const [isPlaying, setIsPlaying] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
-  const [activeCam, setActiveCam] = useState('Cam A-01');
-  const videoRef = useRef(null);
-  const [stream, setStream] = useState(null);
+  const [internalCamera, setInternalCamera] = useState("Cam A-01");
   const [model, setModel] = useState(null);
   const [detections, setDetections] = useState([]);
-  const [isModelLoading, setIsModelLoading] = useState(true);
+  const [isModelLoading, setIsModelLoading] = useState(false);
+  const videoRef = useRef(null);
+  const stageRef = useRef(null);
   const animationRef = useRef(null);
+  const activeCam = selectedCamera ?? internalCamera;
+  const setActiveCam = onCameraChange ?? setInternalCamera;
 
-  const colorMap = {
-    ripe: "border-amber-400 text-amber-400 bg-amber-400/20",
-    unripe: "border-emerald-400 text-emerald-400 bg-emerald-400/20",
-    overripe: "border-red-500 text-red-500 bg-red-500/20",
-  };
-
-  const statusMap = [
-    { status: 'Matang', type: 'ripe' },
-    { status: 'Mentah', type: 'unripe' },
-    { status: 'Busuk', type: 'overripe' },
-  ];
-
-  // Load Model
   useEffect(() => {
-    setIsModelLoading(true);
-    cocoSsd.load().then((loadedModel) => {
-      setModel(loadedModel);
-      setIsModelLoading(false);
-    }).catch(err => {
-      console.error("Gagal memuat model AI:", err);
-      setIsModelLoading(false);
-    });
-  }, []);
-
-  // Handle switching to device camera
-  useEffect(() => {
-    if (activeCam === 'device') {
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-        .then((mediaStream) => {
-          setStream(mediaStream);
-          if (videoRef.current) {
-            videoRef.current.srcObject = mediaStream;
-          }
-        })
-        .catch((err) => {
-          console.error("Gagal mengakses kamera:", err);
-          alert("Gagal mengakses kamera. Pastikan Anda telah memberikan izin akses.");
-          setActiveCam('Cam A-01');
-        });
-    } else {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-        setStream(null);
-      }
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
-      // Reset detections when not using camera
-      setDetections([]);
-    }
-
+    if (activeCam !== "device") return undefined;
+    let isMounted = true;
+    import("@tensorflow-models/coco-ssd")
+      .then((cocoSsd) => cocoSsd.load())
+      .then((loadedModel) => {
+        if (isMounted) setModel(loadedModel);
+      })
+      .catch((error) => {
+        console.error("Gagal memuat model AI:", error);
+      })
+      .finally(() => {
+        if (isMounted) setIsModelLoading(false);
+      });
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
+      isMounted = false;
     };
   }, [activeCam]);
 
-  // Detection Loop
   useEffect(() => {
+    if (activeCam !== "device") {
+      if (videoRef.current) videoRef.current.srcObject = null;
+      return undefined;
+    }
+
+    let isMounted = true;
+    let cleanupStream;
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then((mediaStream) => {
+        if (!isMounted) {
+          mediaStream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        if (videoRef.current) videoRef.current.srcObject = mediaStream;
+        cleanupStream = () => mediaStream.getTracks().forEach((track) => track.stop());
+      })
+      .catch((error) => {
+        console.error("Gagal mengakses kamera:", error);
+        window.alert("Gagal mengakses kamera. Pastikan Anda telah memberikan izin akses.");
+        setActiveCam("Cam A-01");
+      });
+
+    return () => {
+      isMounted = false;
+      cleanupStream?.();
+    };
+  }, [activeCam, setActiveCam]);
+
+  useEffect(() => {
+    if (activeCam !== "device") return undefined;
+    let cancelled = false;
     const detectFrame = async () => {
-      if (
-        model && 
-        activeCam === 'device' && 
-        isPlaying && 
-        showOverlay && 
-        videoRef.current && 
-        videoRef.current.readyState === 4
-      ) {
-        const video = videoRef.current;
+      const video = videoRef.current;
+      if (model && isPlaying && showOverlay && video?.readyState === 4) {
         try {
           const predictions = await model.detect(video);
-          
-          // Calculate percentages based on video's original resolution
-          const videoWidth = video.videoWidth;
-          const videoHeight = video.videoHeight;
-          
-          if (videoWidth > 0 && videoHeight > 0) {
-            const mappedDetections = predictions
-              // Filter out extremely low confidence to reduce flickering
-              .filter(p => p.score > 0.5)
-              .map((p, index) => {
-                const [x, y, width, height] = p.bbox;
-                const mockState = statusMap[index % 3];
-                
-                return {
-                  id: index,
-                  left: `${(x / videoWidth) * 100}%`,
-                  top: `${(y / videoHeight) * 100}%`,
-                  width: `${(width / videoWidth) * 100}%`,
-                  height: `${(height / videoHeight) * 100}%`,
-                  status: mockState.status,
-                  confidence: Math.round(p.score * 100),
-                  type: mockState.type,
-                  className: p.class // optionally show the real class
-                };
-              });
-            setDetections(mappedDetections);
+          if (cancelled) return;
+          const width = video.videoWidth;
+          const height = video.videoHeight;
+          if (width > 0 && height > 0) {
+            setDetections(predictions.filter((item) => item.score > 0.5).map((item, index) => {
+              const [x, y, boxWidth, boxHeight] = item.bbox;
+              const maturity = statuses[index % statuses.length];
+              return {
+                id: index,
+                left: `${(x / width) * 100}%`,
+                top: `${(y / height) * 100}%`,
+                width: `${(boxWidth / width) * 100}%`,
+                height: `${(boxHeight / height) * 100}%`,
+                status: maturity.status,
+                confidence: Math.round(item.score * 100),
+                type: maturity.type,
+              };
+            }));
           }
-        } catch (err) {
-          console.error("Detection error:", err);
+        } catch (error) {
+          console.error("Gagal menganalisis kamera:", error);
         }
-      } else if (activeCam !== 'device') {
-        // If not using device cam, clear detections or show static mock
-        setDetections([]);
       }
-      
-      animationRef.current = requestAnimationFrame(detectFrame);
+      if (!cancelled) animationRef.current = requestAnimationFrame(detectFrame);
     };
 
     animationRef.current = requestAnimationFrame(detectFrame);
-
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+      cancelled = true;
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [model, activeCam, isPlaying, showOverlay]);
+  }, [activeCam, isPlaying, model, showOverlay]);
 
   const togglePlay = () => {
-    if (activeCam === 'device' && videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-      }
+    if (activeCam === "device" && videoRef.current) {
+      if (isPlaying) videoRef.current.pause();
+      else videoRef.current.play();
     }
-    setIsPlaying(!isPlaying);
+    setIsPlaying((playing) => !playing);
   };
 
+  const changeCamera = (camera) => {
+    if (camera === "device") setIsModelLoading(true);
+    setActiveCam(camera);
+  };
+
+  const takeSnapshot = () => {
+    const video = videoRef.current;
+    if (!video || activeCam !== "device" || !video.videoWidth) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d")?.drawImage(video, 0, 0);
+    const link = document.createElement("a");
+    link.download = "cocoasense-snapshot.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  };
+
+  const cameraLabel = activeCam === "device"
+    ? "Kamera HP / Webcam"
+    : `${activeCam} (${cameras.find((camera) => camera.name === activeCam)?.block ?? "Blok A"})`;
+
   return (
-    <div className="flex flex-col h-full bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
-      {/* Header / Controls */}
-      <div className="p-3 bg-white/80 border-b border-slate-200 flex justify-between items-center z-10 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-            <span className="relative flex h-2 w-2">
-              {isPlaying && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>}
-              <span className={cn("relative inline-flex rounded-full h-2 w-2", isPlaying ? "bg-red-500" : "bg-slate-400")}></span>
-            </span>
-            <span className="text-sm font-medium text-slate-700 hidden sm:inline-block">
-              LIVE: {activeCam === 'device' ? 'Kamera HP/Webcam' : activeCam}
-            </span>
+    <section className="glass-card video-player" aria-label="Pemantauan kamera">
+      <header className="video-topbar">
+        <div className="video-header-actions">
+          <div className="live-pill">
+            <span className="live-dot" aria-hidden="true" />
+            <span>LIVE: {activeCam === "device" ? "Kamera HP/Webcam" : activeCam}</span>
           </div>
-          
-          <select 
-            className="bg-white border border-slate-200 text-slate-700 text-sm rounded-lg px-2 py-1.5 outline-none focus:border-emerald-500 shadow-sm"
+          <select
+            className="glass-select camera-select"
             value={activeCam}
-            onChange={(e) => setActiveCam(e.target.value)}
+            onChange={(event) => changeCamera(event.target.value)}
+            aria-label="Pilih kamera"
           >
-            <option value="Cam A-01">Cam A-01 (Blok A)</option>
-            <option value="Cam A-02">Cam A-02 (Blok A)</option>
-            <option value="Cam B-01">Cam B-01 (Blok B)</option>
-            <option value="Cam C-01">Cam C-01 (Blok C)</option>
-            <option value="device">📷 Kamera HP / Webcam</option>
+            {cameras.map((camera) => (
+              <option key={camera.name} value={camera.name}>{camera.name} ({camera.block})</option>
+            ))}
+            <option value="device">Kamera HP / Webcam</option>
           </select>
         </div>
+        {showOverlayControl && (
+          <button
+            className={cn("overlay-toggle", showOverlay && "is-active")}
+            type="button"
+            onClick={() => setShowOverlay((visible) => !visible)}
+            disabled={activeCam === "device" && isModelLoading}
+            aria-pressed={showOverlay}
+          >
+            <Settings2 size={14} aria-hidden="true" />
+            AI Overlay
+          </button>
+        )}
+      </header>
 
-        <div className="flex items-center gap-2">
-          {isModelLoading && (
-            <span className="text-xs text-slate-500 font-medium animate-pulse hidden md:block">
-              Loading AI Model...
-            </span>
-          )}
-          {showOverlayControl && (
-            <button 
-              onClick={() => setShowOverlay(!showOverlay)}
-              disabled={isModelLoading}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border",
-                showOverlay 
-                  ? "bg-emerald-50 text-emerald-600 border-emerald-200" 
-                  : "bg-slate-50 text-slate-600 border-slate-200",
-                isModelLoading && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              <Settings2 className="w-4 h-4 hidden sm:block" />
-              AI Overlay
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Video Area */}
-      <div className="relative flex-1 bg-black overflow-hidden group min-h-[300px] flex items-center justify-center">
-        {activeCam === 'device' ? (
-          <video 
-            ref={videoRef} 
-            autoPlay 
-            playsInline 
-            muted 
-            className="w-full h-full object-fill"
-          />
+      <div className="video-stage" ref={stageRef}>
+        {activeCam === "device" ? (
+          <video ref={videoRef} autoPlay playsInline muted aria-label="Tayangan kamera langsung" />
         ) : (
-          <div className="absolute inset-0 bg-slate-800 flex items-center justify-center bg-[url('https://images.unsplash.com/photo-1611843467160-25afb8cf1074?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-70">
-            <span className="bg-black/50 text-white px-4 py-2 rounded-lg backdrop-blur-sm z-10">Kamera Statis (Mock) - Tidak Ada Deteksi Aktif</span>
+          <div className="video-scene" aria-hidden="true" />
+        )}
+        <time className="timestamp-chip">{timestamp}</time>
+
+        {activeCam !== "device" && (
+          <div className="mock-label">Kamera Statis (Mock) - Tidak Ada Deteksi Aktif</div>
+        )}
+
+        {showOverlayControl && showOverlay && activeCam !== "device" && (
+          <div className="bounding-box demo-box" aria-label="Contoh overlay deteksi Matang 96%">
+            <span className="box-caption">Matang 96%</span>
+            <span className="box-corner-right" />
+            <span className="box-corner-left" />
           </div>
         )}
-        
-        {/* Timestamp */}
-        <div className="absolute top-4 left-4 font-mono text-white/90 text-sm bg-black/50 px-2 py-1 rounded backdrop-blur-sm z-20">
-          {new Date().toISOString().split('T')[0]} {new Date().toLocaleTimeString()}
-        </div>
 
-
-        {showOverlay && activeCam === 'device' && detections.map((box) => (
-          <div 
+        {showOverlay && activeCam === "device" && detections.map((box) => (
+          <div
+            className={`bounding-box ${toneClass[box.type]}`}
             key={box.id}
-            className={cn("absolute border-2 transition-all duration-75 z-10 pointer-events-none", colorMap[box.type])}
             style={{ top: box.top, left: box.left, width: box.width, height: box.height }}
           >
-            <div className="absolute -top-6 left-[-2px] bg-black/70 backdrop-blur-sm px-1.5 py-0.5 whitespace-nowrap text-xs font-semibold rounded-t flex gap-2">
-              <span className="text-white">{box.status}</span>
-              <span className="opacity-90">{box.confidence}%</span>
-            </div>
+            <span className="box-caption">{box.status} {box.confidence}%</span>
+            <span className="box-corner-right" />
+            <span className="box-corner-left" />
           </div>
         ))}
 
-        {/* Player Controls */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-between items-center z-30">
-          <button 
+        <div className="video-controls">
+          <button
+            className="video-control"
+            type="button"
             onClick={togglePlay}
-            className="p-2 hover:bg-white/20 rounded-full text-white transition-colors"
+            title={isPlaying ? "Jeda" : "Putar"}
+            aria-label={isPlaying ? "Jeda" : "Putar"}
           >
-            {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+            {isPlaying ? <Pause size={16} /> : <Play size={16} />}
           </button>
-          
-          <div className="flex gap-2">
-            <button className="p-2 hover:bg-white/20 rounded-full text-white transition-colors" title="Snapshot">
-              <Camera className="w-5 h-5" />
+          <div className="control-group">
+            <button className="video-control" type="button" onClick={takeSnapshot} title="Ambil cuplikan" aria-label="Ambil cuplikan">
+              <Camera size={16} />
             </button>
-            <button className="p-2 hover:bg-white/20 rounded-full text-white transition-colors" title="Fullscreen">
-              <Maximize className="w-5 h-5" />
+            <button
+              className="video-control"
+              type="button"
+              onClick={() => stageRef.current?.requestFullscreen?.()}
+              title="Layar penuh"
+              aria-label="Layar penuh"
+            >
+              <Maximize size={16} />
             </button>
           </div>
         </div>
       </div>
-    </div>
+      <span className="sr-only">{cameraLabel}</span>
+    </section>
   );
 }
