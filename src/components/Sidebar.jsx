@@ -3,8 +3,6 @@ import {
   LayoutDashboard,
   MonitorPlay,
   BarChart3,
-  Map as MapIcon,
-  Settings,
   Leaf,
 } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -13,8 +11,6 @@ const navItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Live Monitor", href: "/monitor", icon: MonitorPlay },
   { name: "Analitik Panen", href: "/analytics", icon: BarChart3 },
-  { name: "Peta Blok Kebun", href: "/map", icon: MapIcon },
-  { name: "Pengaturan", href: "/settings", icon: Settings },
 ];
 
 export function Sidebar() {
