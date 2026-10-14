@@ -1,0 +1,8 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Checkpoint model besar (jika tidak ingin ikut ter-push ke GitHub)
+*.pth
+*.pt
