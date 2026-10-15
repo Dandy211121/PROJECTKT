@@ -1,69 +1,90 @@
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   MonitorPlay,
   BarChart3,
-  Map as MapIcon,
-  Settings,
   Leaf,
 } from "lucide-react";
-import { cn } from "../lib/utils";
+import { checkBackendHealth } from "../lib/api";
 
 const navItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Live Monitor", href: "/monitor", icon: MonitorPlay },
   { name: "Analitik Panen", href: "/analytics", icon: BarChart3 },
-  { name: "Peta Blok Kebun", href: "/map", icon: MapIcon },
-  { name: "Pengaturan", href: "/settings", icon: Settings },
 ];
 
 export function Sidebar() {
   const location = useLocation();
+  const [isBackendOnline, setIsBackendOnline] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const check = async () => {
+      const res = await checkBackendHealth();
+      if (mounted) setIsBackendOnline(res.online);
+    };
+    check();
+    const interval = setInterval(check, 8000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 text-slate-600 flex flex-col h-full shrink-0">
-      <div className="p-6 flex items-center gap-3 border-b border-slate-200">
-        <div className="bg-emerald-100 p-2 rounded-lg">
-          <Leaf className="w-6 h-6 text-emerald-600" />
+    <aside className="sidebar">
+      <div className="brand">
+        <div className="brand-mark">
+          <Leaf size={23} strokeWidth={1.7} />
         </div>
-        <div>
-          <h1 className="font-bold text-slate-900 text-lg leading-tight">
-            Cocoa<span className="text-emerald-600">Sense</span>
+        <div className="brand-copy">
+          <h1 className="brand-name">
+            Cocoa<span>Sense</span>
           </h1>
-          <p className="text-xs text-slate-500">AI Maturity Detection</p>
+          <p className="brand-subtitle">AI Maturity Detection</p>
         </div>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
+      <p className="sidebar-label">Menu Utama</p>
+      <nav className="nav-list" aria-label="Navigasi utama">
         {navItems.map((item) => {
           const isActive = location.pathname === item.href;
           return (
             <Link
               key={item.name}
               to={item.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200",
-                isActive
-                  ? "bg-emerald-50 text-emerald-600"
-                  : "hover:bg-slate-100 hover:text-slate-900"
-              )}
+              className={`nav-link${isActive ? " active" : ""}`}
+              aria-current={isActive ? "page" : undefined}
+              title={item.name}
             >
-              <item.icon className={cn("w-5 h-5", isActive ? "text-emerald-600" : "text-slate-400")} />
-              {item.name}
+              <item.icon aria-hidden="true" />
+              <span className="nav-text">{item.name}</span>
             </Link>
           );
         })}
       </nav>
       
-      <div className="p-4 border-t border-slate-200">
-        <div className="bg-slate-50 rounded-lg p-3 text-sm border border-slate-100">
-          <p className="text-slate-500 mb-1">Status Sistem</p>
-          <div className="flex items-center gap-2 text-emerald-600 font-medium">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-            </span>
-            Online & Active
+      <div
+        className="system-card"
+        title={isBackendOnline ? "Backend AI Online & Terhubung" : "Backend AI Offline (Mode Mock)"}
+      >
+        <div className="system-card-copy">
+          <p className="system-card-label">Status Sistem</p>
+          <div
+            className="system-state"
+            style={{ color: isBackendOnline ? "#4ade80" : isBackendOnline === false ? "#facc15" : "#94a3b8" }}
+          >
+            <span
+              className="system-dot"
+              style={{ background: isBackendOnline ? "#22c55e" : isBackendOnline === false ? "#eab308" : "#94a3b8" }}
+              aria-hidden="true"
+            />
+            {isBackendOnline === null
+              ? "Menghubungkan..."
+              : isBackendOnline
+              ? "AI Backend: Online"
+              : "Backend: Offline (Mock)"}
           </div>
         </div>
       </div>

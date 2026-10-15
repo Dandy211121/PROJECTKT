@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+*.pth
+*.pt
+checkpoints/
+
+# Virtual environments
+venv/
+.venv/

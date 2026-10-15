@@ -1,42 +1,52 @@
+import { useState } from "react";
 import { Layout } from "../components/Layout";
 import { VideoPlayer } from "../components/VideoPlayer";
 import { DetectionLog } from "../components/DetectionLog";
 
+const cameras = ["Cam A-01", "Cam A-02", "Cam B-01", "Cam C-01"];
+
 export function LiveMonitor() {
+  const [activeCam, setActiveCam] = useState("Cam A-01");
+
   return (
     <Layout>
-      <div className="flex flex-col h-[calc(100vh-4rem)] md:h-[calc(100vh-4rem)] gap-6">
-        <header>
-          <h1 className="text-2xl font-bold text-slate-900">Live Monitor CCTV</h1>
-          <p className="text-sm text-slate-500">Pantauan kebun kakao dengan overlay deteksi AI real-time</p>
+      <div className="page-content">
+        <header className="page-header">
+          <div>
+            <h1 className="page-heading">Live Monitor CCTV</h1>
+            <p className="page-subtitle">Pantauan kebun kakao dengan overlay deteksi AI real-time</p>
+          </div>
         </header>
 
-        <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
-          {/* Main Video Area */}
-          <div className="flex-1 flex flex-col gap-4">
-            <div className="flex-1 min-h-[400px]">
-              <VideoPlayer showOverlayControl={true} />
+        <section className="monitor-layout" aria-label="Pemantauan kamera kebun">
+          <div className="monitor-main">
+            <div className="monitor-player">
+              <VideoPlayer
+                showOverlayControl
+                activeCam={activeCam}
+                onCameraChange={setActiveCam}
+                timestamp="2026-10-14 21:07:13"
+              />
             </div>
-            
-            {/* Thumbnail Cameras */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 h-32 shrink-0">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="bg-slate-100 border border-slate-200 rounded-lg overflow-hidden relative group cursor-pointer">
-                  <div className="absolute inset-0 bg-slate-800 flex items-center justify-center bg-[url('https://images.unsplash.com/photo-1611843467160-25afb8cf1074?q=80&w=500&auto=format&fit=crop')] bg-cover bg-center opacity-60 group-hover:opacity-80 transition-opacity">
-                  </div>
-                  <div className="absolute bottom-2 left-2 bg-black/60 px-2 py-0.5 rounded text-xs text-white font-medium backdrop-blur-sm border border-white/20">
-                    Cam {['A-01', 'A-02', 'B-01', 'C-01'][i-1]}
-                  </div>
-                </div>
+            <div className="camera-grid" aria-label="Pilih kamera">
+              {cameras.map((camera) => (
+                <button
+                  className={`camera-thumb${activeCam === camera ? " selected" : ""}`}
+                  key={camera}
+                  type="button"
+                  onClick={() => setActiveCam(camera)}
+                  aria-pressed={activeCam === camera}
+                  aria-label={`Tampilkan ${camera}`}
+                >
+                  <span className="camera-name">{camera}</span>
+                </button>
               ))}
             </div>
           </div>
-
-          {/* Sidebar Area */}
-          <div className="w-full lg:w-80 shrink-0 flex flex-col h-[500px] lg:h-auto">
-            <DetectionLog />
-          </div>
-        </div>
+          <aside className="monitor-sidebar">
+            <DetectionLog showWarning />
+          </aside>
+        </section>
       </div>
     </Layout>
   );

@@ -1,29 +1,59 @@
-import { Target, CheckCircle2, AlertCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertCircle, CheckCircle2, Leaf, Target } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { StatsCard } from "../components/StatsCard";
 import { VideoPlayer } from "../components/VideoPlayer";
 import { DetectionLog } from "../components/DetectionLog";
-import { MaturityTrendChart, BlockDistributionChart } from "../components/Charts";
+import { BlockDistributionChart, MaturityTrendChart } from "../components/Charts";
 import { kpiData } from "../data/mockData";
+import { fetchAnalyticsSummary } from "../lib/api";
 
 export function Dashboard() {
+  const [analytics, setAnalytics] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadSummary = async () => {
+      try {
+        const data = await fetchAnalyticsSummary();
+        if (mounted) setAnalytics(data);
+      } catch {
+        // Fallback ke mockData
+        console.warn("Backend analytics belum aktif, menggunakan data simulasi.");
+      }
+    };
+    loadSummary();
+    const interval = setInterval(loadSummary, 10000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const totalDetected = analytics?.total_detected_pods ?? kpiData.totalDetected;
+  const ripePods = analytics?.counts?.Mature ?? kpiData.ripePods;
+  const unripePods = analytics?.counts?.Immature ?? kpiData.unripePods;
+  const overripeDiseased = analytics?.counts?.Overmature ?? kpiData.overripeDiseased;
+  const ripePct = analytics?.percentages?.Mature ? `${analytics.percentages.Mature}% dari total` : "56% dari total";
+  const unripePct = analytics?.percentages?.Immature ? `${analytics.percentages.Immature}% dari total` : "35% dari total";
+  const overripePct = analytics?.percentages?.Overmature ? `${analytics.percentages.Overmature}% dari total` : "9% dari total";
+
   return (
     <Layout>
-      <div className="flex flex-col gap-6">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="page-content">
+        <header className="page-header">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-            <p className="text-sm text-slate-500">Ringkasan pemantauan kebun kakao secara real-time</p>
+            <h1 className="page-heading">Dashboard</h1>
+            <p className="page-subtitle">Ringkasan pemantauan kebun kakao secara real-time</p>
           </div>
-          
-          <div className="flex items-center gap-3">
-            <select className="bg-white border border-slate-200 text-slate-700 text-sm rounded-lg px-3 py-2 outline-none focus:border-emerald-500 shadow-sm">
+          <div className="header-filters">
+            <select className="glass-select" aria-label="Pilih blok">
               <option>Semua Blok</option>
               <option>Blok A</option>
               <option>Blok B</option>
               <option>Blok C</option>
             </select>
-            <select className="bg-white border border-slate-200 text-slate-700 text-sm rounded-lg px-3 py-2 outline-none focus:border-emerald-500 shadow-sm">
+            <select className="glass-select" aria-label="Pilih periode">
               <option>Hari Ini</option>
               <option>Minggu Ini</option>
               <option>Bulan Ini</option>
@@ -31,67 +61,68 @@ export function Dashboard() {
           </div>
         </header>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatsCard 
-            title="Total Buah Terdeteksi" 
-            value={kpiData.totalDetected.toLocaleString()} 
-            icon={Target} 
-            colorVariant="slate"
+        <section className="stats-grid" aria-label="Ringkasan deteksi">
+          <StatsCard
+            title="Total Buah Terdeteksi"
+            value={totalDetected}
+            icon={Target}
+            colorVariant="ocean"
             trend="+12%"
           />
-          <StatsCard 
-            title="Siap Panen (Matang)" 
-            value={kpiData.ripePods.toLocaleString()} 
-            icon={CheckCircle2} 
-            colorVariant="amber"
+          <StatsCard
+            title="Siap Panen (Matang)"
+            value={ripePods}
+            icon={CheckCircle2}
+            colorVariant="gold"
             trend="+5%"
-            subtitle="56% dari total"
+            subtitle={ripePct}
           />
-          <StatsCard 
-            title="Mentah" 
-            value={kpiData.unripePods.toLocaleString()} 
-            icon={Target} 
-            colorVariant="emerald"
-            subtitle="35% dari total"
+          <StatsCard
+            title="Mentah"
+            value={unripePods}
+            icon={Leaf}
+            colorVariant="sky"
+            subtitle={unripePct}
           />
-          <StatsCard 
-            title="Terlalu Matang / Busuk" 
-            value={kpiData.overripeDiseased.toLocaleString()} 
-            icon={AlertCircle} 
-            colorVariant="red"
+          <StatsCard
+            title="Terlalu Matang / Busuk"
+            value={overripeDiseased}
+            icon={AlertCircle}
+            colorVariant="lemon"
             trend="-2%"
-            subtitle="9% dari total"
+            subtitle={overripePct}
           />
-        </div>
+        </section>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 flex flex-col gap-6">
-            {/* Live Feed Miniature */}
-            <div className="h-[400px]">
-              <VideoPlayer />
-            </div>
-            
-            {/* Charts */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-                <h3 className="font-semibold text-slate-800 mb-4 text-sm">Tren Kematangan (4 Minggu)</h3>
-                <MaturityTrendChart />
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-                <h3 className="font-semibold text-slate-800 mb-4 text-sm">Distribusi per Blok</h3>
-                <BlockDistributionChart />
+        <section className="dashboard-main-grid" aria-label="Pemantauan langsung dan riwayat">
+          <div className="dashboard-video">
+            <VideoPlayer timestamp="2026-10-14 21:07:00" />
+          </div>
+          <div className="dashboard-right">
+            <DetectionLog />
+          </div>
+        </section>
+
+        <section className="chart-grid" aria-label="Grafik kematangan dan distribusi">
+          <article className="glass-card hover-card chart-card">
+            <div className="chart-heading-row">
+              <div>
+                <h2 className="card-heading">Tren Kematangan (4 Minggu)</h2>
+                <p className="chart-description">Perubahan jumlah buah berdasarkan tingkat kematangan</p>
               </div>
             </div>
-          </div>
-
-          <div className="lg:col-span-1 flex flex-col gap-6">
-            <div className="flex-1 min-h-[400px]">
-              <DetectionLog />
+            <MaturityTrendChart />
+          </article>
+          <article className="glass-card hover-card chart-card">
+            <div className="chart-heading-row">
+              <div>
+                <h2 className="card-heading">Distribusi per Blok</h2>
+                <p className="chart-description">Sebaran buah terpantau pada setiap area</p>
+              </div>
             </div>
-          </div>
-        </div>
+            <BlockDistributionChart />
+          </article>
+        </section>
       </div>
     </Layout>
   );
