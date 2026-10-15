@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "server": "run_server.bat",
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview"

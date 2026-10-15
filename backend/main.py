@@ -48,21 +48,24 @@ class_type_map = {
     'Overmature': 'overripe'
 }
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def download_models_if_not_exists():
     """Mengunduh checkpoint model jika belum ada di direktori lokal (hanya jika diaktifkan)"""
     if os.environ.get("AUTO_DOWNLOAD_MODELS", "0") != "1":
         return
     models_to_download = {
-        "best_resnet18_cocoa.pth": "1JZ9IR4xkFfzCxqca0sNgQleA2io7b4U",
+        "best_resnet18_cocoa.pth": "1JZ9IR4xkFfzCxqca0sNgQleA2io7b4U-",
         "best_efficientnet_b0_cocoa.pth": "1BfkROAHWNtWuJjhN7I1TO3-vs5qDxBWt"
     }
     try:
         import gdown
         for filename, file_id in models_to_download.items():
-            if not os.path.exists(filename):
+            dest_path = os.path.join(BASE_DIR, filename)
+            if not os.path.exists(dest_path):
                 print(f"[INFO] Sedang mengunduh {filename} dari Google Drive...")
                 url = f'https://drive.google.com/uc?id={file_id}'
-                gdown.download(url, filename, quiet=False)
+                gdown.download(url, dest_path, quiet=False)
                 print(f"[INFO] Berhasil mengunduh {filename}!")
             else:
                 print(f"[INFO] File lokal {filename} sudah tersedia di server.")
@@ -76,12 +79,15 @@ def load_ensemble_models():
     """Memuat model ResNet18 dan EfficientNet-B0"""
     print(f"[INFO] Menggunakan perangkat komputasi: {device}")
     
+    resnet_path = os.path.join(BASE_DIR, "best_resnet18_cocoa.pth")
+    effnet_path = os.path.join(BASE_DIR, "best_efficientnet_b0_cocoa.pth")
+
     # --- Model 1: ResNet18 ---
     model_resnet = models.resnet18(weights=None)
     model_resnet.fc = nn.Linear(model_resnet.fc.in_features, len(class_names))
-    if os.path.exists("best_resnet18_cocoa.pth"):
+    if os.path.exists(resnet_path):
         try:
-            ckpt_resnet = torch.load("best_resnet18_cocoa.pth", map_location=device)
+            ckpt_resnet = torch.load(resnet_path, map_location=device)
             state_dict_res = ckpt_resnet['model_state_dict'] if 'model_state_dict' in ckpt_resnet else ckpt_resnet
             model_resnet.load_state_dict(state_dict_res)
             print("[SUCCESS] Checkpoint ResNet18 berhasil dimuat!")
@@ -95,9 +101,9 @@ def load_ensemble_models():
     # --- Model 2: EfficientNet-B0 ---
     model_effnet = models.efficientnet_b0(weights=None)
     model_effnet.classifier[1] = nn.Linear(model_effnet.classifier[1].in_features, len(class_names))
-    if os.path.exists("best_efficientnet_b0_cocoa.pth"):
+    if os.path.exists(effnet_path):
         try:
-            ckpt_effnet = torch.load("best_efficientnet_b0_cocoa.pth", map_location=device)
+            ckpt_effnet = torch.load(effnet_path, map_location=device)
             state_dict_eff = ckpt_effnet['model_state_dict'] if 'model_state_dict' in ckpt_effnet else ckpt_effnet
             model_effnet.load_state_dict(state_dict_eff)
             print("[SUCCESS] Checkpoint EfficientNet-B0 berhasil dimuat!")
@@ -170,9 +176,10 @@ def apply_nms(detections: List[Dict], iou_threshold: float = 0.35) -> List[Dict]
 
 def is_not_just_background(crop_img: Image.Image) -> bool:
     """Filter untuk melewati area kosong/latar belakang polos demi efisiensi"""
-    np_img = np.array(crop_img)
-    # Jika variasi piksel terlalu rendah (misal daun polos atau area gelap gulita)
-    if np_img.std() < 16.0:
+    # Gunakan grayscale agar deviasi standar mengukur variasi tekstur spasial antar piksel,
+    # bukan perbedaan warna antar channel R, G, B pada piksel yang sama
+    gray = np.array(crop_img.convert("L"))
+    if gray.std() < 16.0:
         return False
     return True
 

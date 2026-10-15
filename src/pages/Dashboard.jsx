@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { AlertCircle, CheckCircle2, Leaf, Target } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { StatsCard } from "../components/StatsCard";
@@ -5,8 +6,38 @@ import { VideoPlayer } from "../components/VideoPlayer";
 import { DetectionLog } from "../components/DetectionLog";
 import { BlockDistributionChart, MaturityTrendChart } from "../components/Charts";
 import { kpiData } from "../data/mockData";
+import { fetchAnalyticsSummary } from "../lib/api";
 
 export function Dashboard() {
+  const [analytics, setAnalytics] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadSummary = async () => {
+      try {
+        const data = await fetchAnalyticsSummary();
+        if (mounted) setAnalytics(data);
+      } catch {
+        // Fallback ke mockData
+        console.warn("Backend analytics belum aktif, menggunakan data simulasi.");
+      }
+    };
+    loadSummary();
+    const interval = setInterval(loadSummary, 10000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const totalDetected = analytics?.total_detected_pods ?? kpiData.totalDetected;
+  const ripePods = analytics?.counts?.Mature ?? kpiData.ripePods;
+  const unripePods = analytics?.counts?.Immature ?? kpiData.unripePods;
+  const overripeDiseased = analytics?.counts?.Overmature ?? kpiData.overripeDiseased;
+  const ripePct = analytics?.percentages?.Mature ? `${analytics.percentages.Mature}% dari total` : "56% dari total";
+  const unripePct = analytics?.percentages?.Immature ? `${analytics.percentages.Immature}% dari total` : "35% dari total";
+  const overripePct = analytics?.percentages?.Overmature ? `${analytics.percentages.Overmature}% dari total` : "9% dari total";
+
   return (
     <Layout>
       <div className="page-content">
@@ -33,33 +64,33 @@ export function Dashboard() {
         <section className="stats-grid" aria-label="Ringkasan deteksi">
           <StatsCard
             title="Total Buah Terdeteksi"
-            value={kpiData.totalDetected}
+            value={totalDetected}
             icon={Target}
             colorVariant="ocean"
             trend="+12%"
           />
           <StatsCard
             title="Siap Panen (Matang)"
-            value={kpiData.ripePods}
+            value={ripePods}
             icon={CheckCircle2}
             colorVariant="gold"
             trend="+5%"
-            subtitle="56% dari total"
+            subtitle={ripePct}
           />
           <StatsCard
             title="Mentah"
-            value={kpiData.unripePods}
+            value={unripePods}
             icon={Leaf}
             colorVariant="sky"
-            subtitle="35% dari total"
+            subtitle={unripePct}
           />
           <StatsCard
             title="Terlalu Matang / Busuk"
-            value={kpiData.overripeDiseased}
+            value={overripeDiseased}
             icon={AlertCircle}
             colorVariant="lemon"
             trend="-2%"
-            subtitle="9% dari total"
+            subtitle={overripePct}
           />
         </section>
 

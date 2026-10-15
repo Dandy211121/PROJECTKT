@@ -26,3 +26,7 @@ dist-ssr
 *.pth
 *.pt
 checkpoints/
+
+# Virtual environments
+venv/
+.venv/

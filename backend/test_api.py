@@ -1,4 +1,9 @@
 import os
+import sys
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from PIL import Image

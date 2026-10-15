@@ -1,9 +1,34 @@
+import { useEffect, useState } from "react";
 import { Activity, BarChart3, Sprout } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { BlockDistributionChart, MaturityTrendChart } from "../components/Charts";
 import { kpiData } from "../data/mockData";
+import { fetchAnalyticsSummary } from "../lib/api";
 
 export function Analytics() {
+  const [analytics, setAnalytics] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadSummary = async () => {
+      try {
+        const data = await fetchAnalyticsSummary();
+        if (mounted) setAnalytics(data);
+      } catch {
+        console.warn("Backend analytics belum aktif, menggunakan mock data.");
+      }
+    };
+    loadSummary();
+    const interval = setInterval(loadSummary, 10000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const totalDetected = analytics?.total_detected_pods ?? kpiData.totalDetected;
+  const ripePods = analytics?.counts?.Mature ?? kpiData.ripePods;
+  const unripePods = analytics?.counts?.Immature ?? kpiData.unripePods;
   return (
     <Layout>
       <div className="page-content">
@@ -41,21 +66,21 @@ export function Analytics() {
           <article className="glass-card summary-card">
             <div>
               <p className="summary-label">Siap Panen</p>
-              <p className="summary-value">{kpiData.ripePods.toLocaleString("id-ID")}</p>
+              <p className="summary-value">{ripePods.toLocaleString("id-ID")}</p>
             </div>
             <Sprout className="summary-icon" size={20} style={{ "--tone": "#FFD444" }} aria-hidden="true" />
           </article>
           <article className="glass-card summary-card">
             <div>
               <p className="summary-label">Buah Mentah</p>
-              <p className="summary-value">{kpiData.unripePods.toLocaleString("id-ID")}</p>
+              <p className="summary-value">{unripePods.toLocaleString("id-ID")}</p>
             </div>
             <Sprout className="summary-icon" size={20} style={{ "--tone": "#8ACFF8" }} aria-hidden="true" />
           </article>
           <article className="glass-card summary-card">
             <div>
               <p className="summary-label">Total Terdeteksi</p>
-              <p className="summary-value">{kpiData.totalDetected.toLocaleString("id-ID")}</p>
+              <p className="summary-value">{totalDetected.toLocaleString("id-ID")}</p>
             </div>
             <Activity className="summary-icon" size={20} style={{ "--tone": "#8ACFF8" }} aria-hidden="true" />
           </article>

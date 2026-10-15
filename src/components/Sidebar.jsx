@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -5,6 +6,7 @@ import {
   BarChart3,
   Leaf,
 } from "lucide-react";
+import { checkBackendHealth } from "../lib/api";
 
 const navItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -14,6 +16,21 @@ const navItems = [
 
 export function Sidebar() {
   const location = useLocation();
+  const [isBackendOnline, setIsBackendOnline] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const check = async () => {
+      const res = await checkBackendHealth();
+      if (mounted) setIsBackendOnline(res.online);
+    };
+    check();
+    const interval = setInterval(check, 8000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   return (
     <aside className="sidebar">
@@ -48,12 +65,26 @@ export function Sidebar() {
         })}
       </nav>
       
-      <div className="system-card" title="Online & Active">
-        <span className="system-dot" aria-hidden="true" />
+      <div
+        className="system-card"
+        title={isBackendOnline ? "Backend AI Online & Terhubung" : "Backend AI Offline (Mode Mock)"}
+      >
         <div className="system-card-copy">
           <p className="system-card-label">Status Sistem</p>
-          <div className="system-state">
-            Online &amp; Active
+          <div
+            className="system-state"
+            style={{ color: isBackendOnline ? "#4ade80" : isBackendOnline === false ? "#facc15" : "#94a3b8" }}
+          >
+            <span
+              className="system-dot"
+              style={{ background: isBackendOnline ? "#22c55e" : isBackendOnline === false ? "#eab308" : "#94a3b8" }}
+              aria-hidden="true"
+            />
+            {isBackendOnline === null
+              ? "Menghubungkan..."
+              : isBackendOnline
+              ? "AI Backend: Online"
+              : "Backend: Offline (Mock)"}
           </div>
         </div>
       </div>

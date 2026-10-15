@@ -1,18 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { Camera, Maximize, Pause, Play, Settings2 } from "lucide-react";
+import { Camera, Maximize, Pause, Play, Settings2, Wifi, WifiOff } from "lucide-react";
 import { cn } from "../lib/utils";
+import {
+  getCctvStreamUrl,
+  connectCameraWebSocket,
+  detectFrameWithAI,
+  fetchCameras,
+} from "../lib/api";
 
-const cameras = [
-  { name: "Cam A-01", block: "Blok A" },
-  { name: "Cam A-02", block: "Blok A" },
-  { name: "Cam B-01", block: "Blok B" },
-  { name: "Cam C-01", block: "Blok C" },
-];
-
-const statuses = [
-  { status: "Matang", type: "ripe" },
-  { status: "Mentah", type: "unripe" },
-  { status: "Busuk", type: "overripe" },
+const defaultCameras = [
+  { id: "Cam A-01", name: "Cam A-01", block: "Blok A" },
+  { id: "Cam A-02", name: "Cam A-02", block: "Blok A" },
+  { id: "Cam B-01", name: "Cam B-01", block: "Blok B" },
+  { id: "Cam C-01", name: "Cam C-01", block: "Blok C" },
 ];
 
 const toneClass = {
@@ -30,25 +30,76 @@ export function VideoPlayer({
   const [isPlaying, setIsPlaying] = useState(true);
   const [showOverlay, setShowOverlay] = useState(true);
   const [internalCamera, setInternalCamera] = useState("Cam A-01");
-  const [model, setModel] = useState(null);
   const [detections, setDetections] = useState([]);
   const [isModelLoading, setIsModelLoading] = useState(false);
+  const [streamAvailable, setStreamAvailable] = useState(true);
+  const [cameraList, setCameraList] = useState(defaultCameras);
   const videoRef = useRef(null);
   const stageRef = useRef(null);
-  const animationRef = useRef(null);
   const activeCam = selectedCamera ?? internalCamera;
   const setActiveCam = onCameraChange ?? setInternalCamera;
 
+  // Ambil daftar kamera dari backend jika tersedia
+  useEffect(() => {
+    let mounted = true;
+    fetchCameras()
+      .then((cams) => {
+        if (mounted && Array.isArray(cams) && cams.length > 0) {
+          const mapped = cams
+            .filter((c) => c.id !== "device")
+            .map((c) => ({
+              id: c.id,
+              name: c.id,
+              block: c.location || "Blok A",
+            }));
+          if (mapped.length > 0) setCameraList(mapped);
+        }
+      })
+      .catch(() => {
+        // Gunakan defaultCameras
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Hubungkan WebSocket telemetri real-time saat kamera CCTV dipilih
+  useEffect(() => {
+    if (activeCam === "device") return undefined;
+    queueMicrotask(() => setStreamAvailable(true));
+    const disconnect = connectCameraWebSocket(
+      activeCam,
+      (telemetry) => {
+        if (telemetry?.detections && telemetry.detections.length > 0) {
+          setDetections(
+            telemetry.detections.map((d) => ({
+              id: d.id,
+              left: d.box_normalized.left,
+              top: d.box_normalized.top,
+              width: d.box_normalized.width,
+              height: d.box_normalized.height,
+              status: d.prediction === "Mature" ? "Matang" : d.prediction === "Immature" ? "Mentah" : "Busuk",
+              confidence: Math.round(d.confidence),
+              type: d.type || (d.prediction === "Mature" ? "ripe" : d.prediction === "Immature" ? "unripe" : "overripe"),
+            }))
+          );
+        }
+      },
+      () => {
+        // WebSocket error
+      }
+    );
+    return () => disconnect();
+  }, [activeCam]);
+
+  // Muat model COCO-SSD sebagai backup untuk webcam jika offline
   useEffect(() => {
     if (activeCam !== "device") return undefined;
     let isMounted = true;
     import("@tensorflow-models/coco-ssd")
       .then((cocoSsd) => cocoSsd.load())
-      .then((loadedModel) => {
-        if (isMounted) setModel(loadedModel);
-      })
       .catch((error) => {
-        console.error("Gagal memuat model AI:", error);
+        console.error("Gagal memuat model lokal:", error);
       })
       .finally(() => {
         if (isMounted) setIsModelLoading(false);
@@ -58,6 +109,7 @@ export function VideoPlayer({
     };
   }, [activeCam]);
 
+  // Akses Webcam
   useEffect(() => {
     if (activeCam !== "device") {
       if (videoRef.current) videoRef.current.srcObject = null;
@@ -87,46 +139,52 @@ export function VideoPlayer({
     };
   }, [activeCam, setActiveCam]);
 
+  // Deteksi frame webcam dengan AI Backend (PyTorch Sliding Window + NMS) setiap 2.5 detik
   useEffect(() => {
-    if (activeCam !== "device") return undefined;
-    let cancelled = false;
-    const detectFrame = async () => {
-      const video = videoRef.current;
-      if (model && isPlaying && showOverlay && video?.readyState === 4) {
-        try {
-          const predictions = await model.detect(video);
-          if (cancelled) return;
-          const width = video.videoWidth;
-          const height = video.videoHeight;
-          if (width > 0 && height > 0) {
-            setDetections(predictions.filter((item) => item.score > 0.5).map((item, index) => {
-              const [x, y, boxWidth, boxHeight] = item.bbox;
-              const maturity = statuses[index % statuses.length];
-              return {
-                id: index,
-                left: `${(x / width) * 100}%`,
-                top: `${(y / height) * 100}%`,
-                width: `${(boxWidth / width) * 100}%`,
-                height: `${(boxHeight / height) * 100}%`,
-                status: maturity.status,
-                confidence: Math.round(item.score * 100),
-                type: maturity.type,
-              };
-            }));
-          }
-        } catch (error) {
-          console.error("Gagal menganalisis kamera:", error);
-        }
-      }
-      if (!cancelled) animationRef.current = requestAnimationFrame(detectFrame);
-    };
+    if (activeCam !== "device" || !isPlaying || !showOverlay) return undefined;
 
-    animationRef.current = requestAnimationFrame(detectFrame);
+    let isCancelled = false;
+    const interval = setInterval(async () => {
+      const video = videoRef.current;
+      if (!video || video.readyState !== 4 || !video.videoWidth) return;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.min(640, video.videoWidth);
+      canvas.height = Math.min(480, video.videoHeight);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(async (blob) => {
+        if (!blob || isCancelled) return;
+        try {
+          const res = await detectFrameWithAI(blob, { confThreshold: 0.65 });
+          if (isCancelled) return;
+          if (res?.detections && res.detections.length > 0) {
+            setDetections(
+              res.detections.map((d) => ({
+                id: d.id,
+                left: d.box_normalized.left,
+                top: d.box_normalized.top,
+                width: d.box_normalized.width,
+                height: d.box_normalized.height,
+                status: d.prediction === "Mature" ? "Matang" : d.prediction === "Immature" ? "Mentah" : "Busuk",
+                confidence: Math.round(d.confidence),
+                type: d.type,
+              }))
+            );
+          }
+        } catch {
+          // Fallback lokal jika backend tidak merespons
+        }
+      }, "image/jpeg", 0.8);
+    }, 2500);
+
     return () => {
-      cancelled = true;
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      isCancelled = true;
+      clearInterval(interval);
     };
-  }, [activeCam, isPlaying, model, showOverlay]);
+  }, [activeCam, isPlaying, showOverlay]);
 
   const togglePlay = () => {
     if (activeCam === "device" && videoRef.current) {
@@ -156,7 +214,7 @@ export function VideoPlayer({
 
   const cameraLabel = activeCam === "device"
     ? "Kamera HP / Webcam"
-    : `${activeCam} (${cameras.find((camera) => camera.name === activeCam)?.block ?? "Blok A"})`;
+    : `${activeCam} (${cameraList.find((camera) => camera.name === activeCam)?.block ?? "Blok A"})`;
 
   return (
     <section className="glass-card video-player" aria-label="Pemantauan kamera">
@@ -172,10 +230,12 @@ export function VideoPlayer({
             onChange={(event) => changeCamera(event.target.value)}
             aria-label="Pilih kamera"
           >
-            {cameras.map((camera) => (
-              <option key={camera.name} value={camera.name}>{camera.name} ({camera.block})</option>
+            {cameraList.map((camera) => (
+              <option key={camera.id || camera.name} value={camera.name}>
+                {camera.name} ({camera.block})
+              </option>
             ))}
-            <option value="device">Kamera HP / Webcam</option>
+            <option value="device">📷 Kamera HP / Webcam</option>
           </select>
         </div>
         {showOverlayControl && (
@@ -195,16 +255,38 @@ export function VideoPlayer({
       <div className="video-stage" ref={stageRef}>
         {activeCam === "device" ? (
           <video ref={videoRef} autoPlay playsInline muted aria-label="Tayangan kamera langsung" />
+        ) : streamAvailable ? (
+          <img
+            src={getCctvStreamUrl(activeCam)}
+            alt={`Live CCTV ${activeCam}`}
+            className="video-stream-img"
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: isPlaying ? "block" : "none" }}
+            onError={() => setStreamAvailable(false)}
+            onLoad={() => setStreamAvailable(true)}
+          />
         ) : (
           <div className="video-scene" aria-hidden="true" />
         )}
+
         <time className="timestamp-chip">{timestamp}</time>
 
         {activeCam !== "device" && (
-          <div className="mock-label">Kamera Statis (Mock) - Tidak Ada Deteksi Aktif</div>
+          <div className="mock-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            {streamAvailable ? (
+              <>
+                <Wifi size={12} color="#4ade80" />
+                <span>Live Feed AI Backend (MJPEG Stream)</span>
+              </>
+            ) : (
+              <>
+                <WifiOff size={12} color="#facc15" />
+                <span>Mode Simulasi (Backend Offline)</span>
+              </>
+            )}
+          </div>
         )}
 
-        {showOverlayControl && showOverlay && activeCam !== "device" && (
+        {showOverlayControl && showOverlay && activeCam !== "device" && !streamAvailable && (
           <div className="bounding-box demo-box" aria-label="Contoh overlay deteksi Matang 96%">
             <span className="box-caption">Matang 96%</span>
             <span className="box-corner-right" />
@@ -214,7 +296,7 @@ export function VideoPlayer({
 
         {showOverlay && activeCam === "device" && detections.map((box) => (
           <div
-            className={`bounding-box ${toneClass[box.type]}`}
+            className={`bounding-box ${toneClass[box.type] || "bounding-box-gold"}`}
             key={box.id}
             style={{ top: box.top, left: box.left, width: box.width, height: box.height }}
           >
