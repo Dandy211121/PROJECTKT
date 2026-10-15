@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   MonitorPlay,
   BarChart3,
-  Leaf,
 } from "lucide-react";
 import { checkBackendHealth } from "../lib/api";
 
@@ -35,9 +34,12 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="brand-mark">
-          <Leaf size={23} strokeWidth={1.7} />
-        </div>
+        <img
+          className="brand-mark"
+          src="/cocoa-sense-logo.png"
+          alt=""
+          aria-hidden="true"
+        />
         <div className="brand-copy">
           <h1 className="brand-name">
             Cocoa<span>Sense</span>
