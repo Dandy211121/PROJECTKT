@@ -25,6 +25,7 @@ import {
   detectFrameWithAI,
   fetchAnalyticsSummary,
   fetchCameras,
+  saveCctvSnapshot,
 } from "./lib/api.js";
 const fmt = (n) => n.toLocaleString("id-ID");
 const Head = ({ t, s, children }) => (
@@ -936,6 +937,19 @@ export function Monitor({ go: _go, backendStatus, toast }) {
     a.href = canvas.toDataURL("image/jpeg", 0.9);
     a.click();
     toast?.("Cuplikan foto berhasil diunduh.");
+
+    // Kirim snapshot ke server AI (#7 /api/v1/cctv/snapshot) jika backend aktif
+    if (backendStatus?.online) {
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+        try {
+          await saveCctvSnapshot(blob);
+          toast?.("Snapshot dicatat ke server AI (#7 /api/v1/cctv/snapshot).");
+        } catch (e) {
+          console.warn("Gagal simpan snapshot ke backend:", e);
+        }
+      }, "image/jpeg", 0.9);
+    }
   };
 
   const toggleFullscreen = () => {

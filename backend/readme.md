@@ -14,18 +14,18 @@ Backend API berbasis **FastAPI** dan **PyTorch** untuk deteksi objek dan klasifi
 
 ---
 
-## 📡 Daftar Lengkap Endpoint API
+## 📡 Panduan Uji Endpoint API (Swagger UI & Client)
 
-| Metode | Endpoint | Deskripsi |
-| :--- | :--- | :--- |
-| **GET** | `/` | Informasi status API, versi, dan daftar endpoint aktif |
-| **POST** | `/api/v1/detect/frame` | Endpoint utama deteksi frame (Sliding Window + NMS). Menerima gambar dan query param (`conf_threshold`, `iou_threshold`, `crop_size`, `stride`) |
-| **POST** | `/predict-sliding-window-ensemble` | Alias kompatibilitas mundur untuk endpoint deteksi frame |
-| **GET** | `/api/v1/cctv/cameras` | Mengambil daftar kamera CCTV terdaftar beserta statusnya |
-| **GET** | `/api/v1/cctv/stream/{camera_id}` | Live stream video CCTV dengan bounding box teranotasi (Format MJPEG untuk tag `<img />`) |
-| **WS** | `/api/v1/cctv/ws/{camera_id}` | WebSocket stream telemetri koordinat bounding box dan persentase kematangan secara real-time |
-| **GET** | `/api/v1/analytics/summary` | Data ringkasan analitik (jumlah matang, mentah, skor kesiapan panen) untuk grafik Dashboard |
-| **POST** | `/api/v1/cctv/snapshot` | Mengambil snapshot manual dan menghasilkan log deteksi |
+| # | Endpoint | Cara Uji | Input |
+| :-: | :--- | :--- | :--- |
+| 1 | `GET /` | Try it out → Execute langsung | Tidak ada |
+| 2 | `POST /api/v1/detect/frame` ⭐ | Upload foto kakao + atur parameter | File gambar `.jpg` / `.png` |
+| 3 | `POST /predict-sliding-window-ensemble` | Sama dengan #2 | File gambar |
+| 4 | `GET /api/v1/cctv/cameras` | Execute langsung | Tidak ada |
+| 5 | `GET /api/v1/cctv/stream/{camera_id}` | ⚠️ Buka di **tab browser baru** | URL langsung |
+| 6 | `GET /api/v1/analytics/summary` | Execute langsung | Tidak ada |
+| 7 | `POST /api/v1/cctv/snapshot` | Upload foto kakao | File gambar |
+| 8 | `WS /api/v1/cctv/ws/{camera_id}` | ⚠️ Gunakan **Browser Console / Hoppscotch** | Tidak ada |
 
 ---
 

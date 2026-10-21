@@ -90,6 +90,33 @@ export async function detectFrameWithAI(imageBlobOrFile, {
 }
 
 /**
+ * #3. Alias kompatibilitas mundur deteksi ensemble sliding window
+ */
+export async function predictSlidingWindowEnsemble(imageBlobOrFile, options = {}) {
+  return detectFrameWithAI(imageBlobOrFile, options);
+}
+
+/**
+ * #7. Mengunggah foto snapshot manual dan menghasilkan log deteksi AI
+ */
+export async function saveCctvSnapshot(imageBlobOrFile) {
+  const formData = new FormData();
+  formData.append("file", imageBlobOrFile, "snapshot.jpg");
+
+  const res = await fetch(`${API_BASE_URL}/api/v1/cctv/snapshot`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Gagal menyimpan snapshot: ${res.statusText} (${errorText})`);
+  }
+
+  return res.json();
+}
+
+/**
  * Membuka koneksi WebSocket untuk menerima telemetri bounding box real-time dari kamera CCTV
  */
 export function connectCameraWebSocket(cameraId, onData, onError) {
