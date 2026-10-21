@@ -1,35 +1,36 @@
 import React, { useState, useEffect } from "react";
 import { Icon } from "./ui.jsx";
 import * as Pg from "./pages.jsx";
+import { checkBackendHealth } from "./lib/api.js";
 const MAIN = [
   ["dashboard", "Dashboard", "grid"],
-  ["deteksi", "Deteksi Kakao", "scan"],
   ["analisis", "Analisis Panen", "chart"],
   ["monitor", "Live Monitor", "vid"],
-];
-const MORE = [
-  ["kebun", "Kebun dan Blok", "leaf"],
-  ["kamera", "Kamera", "cam"],
-  ["riwayat", "Riwayat Deteksi", "hist"],
-  ["pengaturan", "Pengaturan", "set"],
 ];
 const PAGES = {
   dashboard: Pg.Dashboard,
   deteksi: Pg.Deteksi,
   analisis: Pg.Analisis,
   monitor: Pg.Monitor,
-  kebun: Pg.Kebun,
-  kamera: Pg.Kamera,
-  riwayat: Pg.Riwayat,
-  pengaturan: Pg.Pengaturan,
 };
 export default function App() {
   const read = () => location.hash.slice(1) || "dashboard";
   const [pg, setPg] = useState(read),
     [menu, setMenu] = useState(false),
-    [more, setMore] = useState(false),
-    [bell, setBell] = useState(false),
-    [tm, setTm] = useState("");
+    [tm, setTm] = useState(""),
+    [backendStatus, setBackendStatus] = useState({ online: false, checking: true });
+
+  const verifyBackend = async () => {
+    const res = await checkBackendHealth();
+    setBackendStatus({ online: res.online, checking: false, data: res.data });
+  };
+
+  useEffect(() => {
+    verifyBackend();
+    const interval = setInterval(verifyBackend, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const f = () => {
       setPg(read());
@@ -41,14 +42,12 @@ export default function App() {
   const go = (p) => {
     location.hash = p;
     setMenu(false);
-    setMore(false);
   };
   const toast = (m) => {
     setTm(m);
     setTimeout(() => setTm(""), 2600);
   };
-  const Page = PAGES[pg] || Pg.Dashboard,
-    isMore = MORE.some((m) => m[0] === pg);
+  const Page = PAGES[pg] || Pg.Dashboard;
   const Item = ([k, l, i]) => (
     <button
       key={k}
@@ -71,47 +70,19 @@ export default function App() {
           </button>
           <nav className="links" aria-label="Navigasi utama">
             {MAIN.map(Item)}
-            <div className="dd">
-              <button
-                className={"nl" + (isMore ? " on" : "")}
-                onClick={() => setMore(!more)}
-              >
-                Kelola
-                <Icon n="chev" s={15} />
-              </button>
-              {more && <div className="menu">{MORE.map(Item)}</div>}
-            </div>
           </nav>
           <div className="right">
-            <select className="sel kb" aria-label="Pilih kebun">
-              <option>Kebun Sumber Rejeki</option>
-              <option>Kebun Lereng Timur</option>
-            </select>
-            <div className="dd">
-              <button
-                className="ib"
-                aria-label="Notifikasi"
-                onClick={() => setBell(!bell)}
-              >
-                <Icon n="bell" />
-                <b />
-              </button>
-              {bell && (
-                <div className="menu r">
-                  <div>
-                    <b>Kamera D-01 offline</b>
-                    <small>12 menit lalu</small>
-                  </div>
-                  <div>
-                    <b>14 buah terlalu matang di Blok C</b>
-                    <small>1 jam lalu</small>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="av" title="Hendra Saputra">
-              HS
-            </div>
+            <button
+              className={`backend-pill ${backendStatus.online ? "online" : "offline"}`}
+              onClick={() => {
+                verifyBackend();
+                toast(backendStatus.online ? "Backend AI Aktif & Tersambung (FastAPI 127.0.0.1:8000)" : "Mencoba menghubungkan ulang ke backend...");
+              }}
+              title={backendStatus.online ? "Backend AI Aktif (FastAPI 127.0.0.1:8000)" : "Backend Offline - Klik untuk cek kembali"}
+            >
+              <span className="dot" />
+              <span>{backendStatus.online ? "Backend: Online" : "Backend: Offline"}</span>
+            </button>
             <button
               className="ib burger"
               aria-label="Menu"
@@ -121,13 +92,13 @@ export default function App() {
             </button>
           </div>
         </header>
-        {menu && <div className="mob">{[...MAIN, ...MORE].map(Item)}</div>}
+        {menu && <div className="mob">{MAIN.map(Item)}</div>}
       </div>
       <main key={pg}>
-        <Page go={go} toast={toast} />
+        <Page go={go} toast={toast} backendStatus={backendStatus} />
         <footer>
-          <span>© 2026 Kaora App · Seluruh data adalah data simulasi</span>
-          <span>Sinkronisasi terakhir: 08:02 WIB</span>
+          <span>© 2026 Kaora App · {backendStatus.online ? "Backend PyTorch AI Ensemble Aktif" : "Mode Simulasi"}</span>
+          <span>{backendStatus.online ? "Status: Backend Terhubung (127.0.0.1:8000)" : "Backend: Terputus"}</span>
         </footer>
       </main>
       {tm && (

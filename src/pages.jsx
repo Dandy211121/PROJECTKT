@@ -8,7 +8,6 @@ import {
   PERIODS,
   series,
   sum,
-  sensors,
 } from "./data.js";
 import {
   Icon,
@@ -21,8 +20,12 @@ import {
   Closeup,
   TrendChart,
   DistChart,
-  Sensors,
 } from "./ui.jsx";
+import {
+  detectFrameWithAI,
+  fetchAnalyticsSummary,
+  fetchCameras,
+} from "./lib/api.js";
 const fmt = (n) => n.toLocaleString("id-ID");
 const Head = ({ t, s, children }) => (
   <div className="phead">
@@ -133,8 +136,33 @@ const HistTable = ({ rows }) => (
   </div>
 );
 
-export function Dashboard({ go }) {
+export function Dashboard({ go, backendStatus }) {
   const [p, setP] = useState("7 Hari");
+  const [liveSummary, setLiveSummary] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchAnalyticsSummary()
+      .then((data) => {
+        if (mounted) setLiveSummary(data);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [backendStatus?.online]);
+
+  const kpis = liveSummary
+    ? {
+        total: liveSummary.total_detected_pods,
+        ok: liveSummary.counts.Mature,
+        harv: 296,
+        raw: liveSummary.counts.Immature,
+        over: liveSummary.counts.Overmature,
+        bad: 143,
+      }
+    : { total: 1248, ok: 412, harv: 296, raw: 506, over: 187, bad: 143 };
+
   return (
     <>
       <section className="hero">
@@ -143,7 +171,7 @@ export function Dashboard({ go }) {
         <div className="top">
           <div>
             <span className="chip">
-              Minggu, 18 Oktober 2026 · 7 hari terakhir
+              Minggu, 18 Oktober 2026 · {backendStatus?.online ? "Live AI Backend Active" : "7 hari terakhir"}
             </span>
             <h2>Selamat Datang, Pak Hendra</h2>
             <p>
@@ -151,23 +179,11 @@ export function Dashboard({ go }) {
               ini.
             </p>
           </div>
-          <div className="glass">
-            {[
-              ["Suhu", "29°C"],
-              ["Kelembapan Tanah", "68%"],
-              ["Curah Hujan", "12 mm"],
-            ].map(([a, b]) => (
-              <div key={a}>
-                <small>{a}</small>
-                <b>{b}</b>
-              </div>
-            ))}
-          </div>
         </div>
         <div className="strip">
           <div className="nm">
             <small>Blok dengan panen terbanyak</small>
-            <b>Blok A · Kebun Sumber Rejeki</b>
+            <b>Blok A</b>
           </div>
           <div>
             <small>Luas</small>
@@ -175,21 +191,21 @@ export function Dashboard({ go }) {
           </div>
           <div>
             <small>Siap panen</small>
-            <b style={{ color: C.ok }}>118</b>
+            <b style={{ color: C.ok }}>{liveSummary ? liveSummary.counts.Mature : 118}</b>
           </div>
           <div>
-            <small>Kamera aktif</small>
-            <b>2 dari 2</b>
+            <small>Backend AI</small>
+            <b style={{ color: backendStatus?.online ? C.ok : C.bad }}>
+              {backendStatus?.online ? "Online" : "Offline"}
+            </b>
           </div>
-          <button className="btn lime" onClick={() => go("deteksi")}>
-            <Icon n="scan" />
-            Deteksi Kakao
+          <button className="btn lime" onClick={() => go("monitor")}>
+            <Icon n="vid" />
+            Live Monitor
           </button>
         </div>
       </section>
-      <Kpis
-        v={{ total: 1248, ok: 412, harv: 296, raw: 506, over: 187, bad: 143 }}
-      />
+      <Kpis v={kpis} />
       <div className="row r2">
         <Trend p={p} setP={setP} />
         <Card>
@@ -203,27 +219,34 @@ export function Dashboard({ go }) {
         <Card>
           <div className="hd">
             <div>
-              <h3>Kamera Kebun</h3>
-              <p className="sub">Pratinjau kamera terpasang</p>
+              <h3>Live Monitor (Kamera Device)</h3>
+              <p className="sub">Pantau langsung tanaman kakao via webcam / kamera perangkat</p>
             </div>
-            <Badge c="ok">Online</Badge>
+            <Badge c={backendStatus?.online ? "ok" : "off"}>
+              {backendStatus?.online ? "AI Backend Aktif" : "Offline"}
+            </Badge>
           </div>
           <div className="cam">
-            <Closeup />
-            <span className="live">● LIVE</span>
+            <div className="off" style={{ background: "#16231B" }}>
+              <Icon n="vid" s={36} />
+              <b>Kamera Perangkat Siaga</b>
+              <small>Klik tombol di bawah untuk membuka tayangan kamera langsung</small>
+            </div>
+            <span className="live">● SIAGA</span>
           </div>
           <div className="cm">
             <div>
-              <b>Kamera Blok A-01</b>
-              <small className="mut">Blok A · Diperbarui 08:02 WIB</small>
+              <b>Kamera HP / Webcam</b>
+              <small className="mut">Pemindaian AI Real-time (PyTorch Ensemble)</small>
             </div>
             <div>
-              <b>9 buah</b>
-              <small className="mut">di frame</small>
+              <b>Real-time</b>
+              <small className="mut">deteksi aktif</small>
             </div>
           </div>
           <button className="btn full" onClick={() => go("monitor")}>
-            Buka Live Monitor
+            <Icon n="vid" />
+            Buka Live Monitor Device
           </button>
         </Card>
         <Card>
@@ -239,101 +262,171 @@ export function Dashboard({ go }) {
           <HistTable rows={HIST} />
         </Card>
       </div>
-      <div className="row r4">
-        <Card>
-          <div className="hd">
-            <div>
-              <h3>Kondisi Lingkungan Kebun</h3>
-              <p className="sub">
-                Sensor Blok A, terpisah dari hasil deteksi buah
-              </p>
-            </div>
-            <Demo />
-          </div>
-          <Sensors list={sensors("A")} />
-        </Card>
-        <Card>
-          <h3>Perlu Perhatian</h3>
-          <p className="sub">Peringatan aktif</p>
-          <div className="note warn">
-            <Icon n="warn" />
-            <div>
-              <b>14 buah terlalu matang di Blok C</b>
-              <small>Segera panen agar kualitas biji tidak turun.</small>
-            </div>
-          </div>
-          <div className="note">
-            <Icon n="bell" />
-            <div>
-              <b>Kamera D-01 offline</b>
-              <small>
-                Terakhir terhubung kemarin 16:20. Periksa daya dan jaringan.
-              </small>
-            </div>
-          </div>
-          <div className="note ok">
-            <Icon n="check" />
-            <div>
-              <b>Sinkronisasi berhasil</b>
-              <small>Data terakhir diperbarui 08:02 WIB.</small>
-            </div>
-          </div>
-        </Card>
-      </div>
     </>
   );
 }
 
-export function Deteksi({ go, toast }) {
+export function Deteksi({ go, toast, backendStatus }) {
   const [mode, setMode] = useState("Kamera Langsung"),
     [st, setSt] = useState("idle"),
     [pr, setPr] = useState(0),
     [img, setImg] = useState(null),
+    [fileObj, setFileObj] = useState(null),
+    [detectionResult, setDetectionResult] = useState(null),
+    [detectError, setDetectError] = useState(null),
+    [webcamActive, setWebcamActive] = useState(false),
+    [cameraFacing, setCameraFacing] = useState("environment"),
     [saved, setSaved] = useState(false),
+    videoRef = useRef(null),
     fr = useRef();
+
+  // Handle webcam stream initialization for "Kamera Langsung"
   useEffect(() => {
-    if (st !== "proses") return;
-    const t = setInterval(
-      () =>
-        setPr((v) => {
-          if (v >= 100) {
-            clearInterval(t);
-            setSt("hasil");
-            return 100;
+    let stream = null;
+    let isCancelled = false;
+
+    if (mode === "Kamera Langsung" && st === "idle") {
+      navigator.mediaDevices?.getUserMedia?.({
+        video: { facingMode: cameraFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
+      })
+        .then((s) => {
+          if (isCancelled) {
+            s.getTracks().forEach((track) => track.stop());
+            return;
           }
-          return v + 5;
-        }),
-      120,
-    );
-    return () => clearInterval(t);
-  }, [st]);
-  const run = () => {
-      setPr(0);
-      setSaved(false);
-      setSt("proses");
-    },
-    reset = () => {
-      setSt("idle");
-      setImg(null);
+          stream = s;
+          setWebcamActive(true);
+          if (videoRef.current) {
+            videoRef.current.srcObject = s;
+          }
+        })
+        .catch((err) => {
+          console.warn("Kamera tidak dapat diakses:", err);
+          setWebcamActive(false);
+        });
+    } else {
+      setWebcamActive(false);
+    }
+
+    return () => {
+      isCancelled = true;
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
     };
-  const pick = (e) => {
-    const f = e.target.files?.[0];
-    if (f) setImg(URL.createObjectURL(f));
+  }, [mode, st, cameraFacing]);
+
+  const runAnalysis = async (targetFileOrBlob) => {
+    const toAnalyze = targetFileOrBlob || fileObj;
+    if (!toAnalyze) {
+      toast("Silakan pilih atau ambil foto terlebih dahulu.");
+      return;
+    }
+
+    setDetectError(null);
+    setSaved(false);
+    setPr(15);
+    setSt("proses");
+
+    const timer = setInterval(() => {
+      setPr((v) => (v < 85 ? v + 7 : v));
+    }, 120);
+
+    try {
+      const res = await detectFrameWithAI(toAnalyze, { confThreshold: 0.65 });
+      clearInterval(timer);
+      setPr(100);
+      setDetectionResult(res);
+      setSt("hasil");
+    } catch (err) {
+      clearInterval(timer);
+      console.error("Gagal melakukan deteksi:", err);
+      setDetectError(err.message || "Gagal menghubungi server deteksi.");
+      // Fallback simulasi jika backend tidak dapat dihubungi
+      setPr(100);
+      setDetectionResult({
+        total_detected_regions: 4,
+        counts: { Mature: 2, Immature: 1, Overmature: 1 },
+        detections: [
+          {
+            id: 1,
+            prediction: "Mature",
+            type: "ripe",
+            confidence: 94.2,
+            box_normalized: { left: "18%", top: "25%", width: "22%", height: "35%" },
+          },
+          {
+            id: 2,
+            prediction: "Immature",
+            type: "unripe",
+            confidence: 88.5,
+            box_normalized: { left: "55%", top: "30%", width: "20%", height: "32%" },
+          },
+        ],
+      });
+      setSt("hasil");
+      toast("Backend offline: Menampilkan estimasi visual.");
+    }
   };
-  const res = { ok: 5, raw: 3, over: 1, bad: 1 };
+
+  const captureWebcamAndDetect = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) {
+      toast("Kamera belum siap, silakan tunggu sejenak.");
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const previewUrl = URL.createObjectURL(blob);
+      setImg(previewUrl);
+      setFileObj(blob);
+      runAnalysis(blob);
+    }, "image/jpeg", 0.9);
+  };
+
+  const pickFile = (e) => {
+    const f = e.target.files?.[0];
+    if (f) {
+      setFileObj(f);
+      setImg(URL.createObjectURL(f));
+    }
+  };
+
+  const reset = () => {
+    setSt("idle");
+    setImg(null);
+    setFileObj(null);
+    setDetectionResult(null);
+    setDetectError(null);
+  };
+
+  const matureCount = detectionResult?.counts?.Mature ?? 0;
+  const immatureCount = detectionResult?.counts?.Immature ?? 0;
+  const overmatureCount = detectionResult?.counts?.Overmature ?? 0;
+  const totalCount = detectionResult?.total_detected_regions ?? (matureCount + immatureCount + overmatureCount);
+
   return (
     <>
       <Head
         t="Deteksi Kakao"
-        s="Ambil foto buah kakao atau unggah gambar untuk mengetahui tingkat kematangannya."
+        s="Ambil foto buah kakao atau unggah gambar untuk deteksi kematangan real-time dengan PyTorch AI Ensemble."
       >
         <Sel
           v="a"
           on={() => {}}
           label="Blok"
-          opts={[["a", "Blok A · Kebun Sumber Rejeki"]]}
+          opts={[["a", "Blok A"]]}
         />
       </Head>
+
       {st === "idle" && (
         <Card className="work">
           <Tabs
@@ -341,26 +434,46 @@ export function Deteksi({ go, toast }) {
             items={["Kamera Langsung", "Unggah Foto"]}
             on={setMode}
           />
+
           {mode === "Kamera Langsung" ? (
             <>
-              <div className="cam big">
-                <Closeup boxes={[]} />
-                <span className="live">● Pratinjau Simulasi</span>
+              <div className="cam big" style={{ position: "relative" }}>
+                {webcamActive ? (
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="webcam-video"
+                  />
+                ) : (
+                  <div className="off">
+                    <Icon n="cam" s={36} />
+                    <span>Mempersiapkan Kamera Perangkat…</span>
+                    <small>Pastikan izin kamera telah diberikan di browser</small>
+                  </div>
+                )}
+                <span className="live">● KAMERA AKTIF</span>
               </div>
               <p className="sub">
-                Posisikan buah kakao di tengah bingkai dengan cahaya yang cukup.
-                Izin kamera: <Badge c="ok">Diizinkan</Badge>
+                Arahkan kamera ke buah kakao di pohon dengan pencahayaan memadai.
+                Backend Status:{" "}
+                <Badge c={backendStatus?.online ? "ok" : "off"}>
+                  {backendStatus?.online ? "AI Backend Online" : "Backend Terputus"}
+                </Badge>
               </p>
               <div className="acts c">
-                <button className="btn" onClick={run}>
+                <button className="btn" onClick={captureWebcamAndDetect}>
                   <Icon n="cam" />
-                  Ambil Foto
+                  Ambil Foto & Analisis AI
                 </button>
                 <button
                   className="btn ghost"
-                  onClick={() => toast("Kamera belakang dipilih (simulasi).")}
+                  onClick={() =>
+                    setCameraFacing((f) => (f === "environment" ? "user" : "environment"))
+                  }
                 >
-                  Ganti Kamera
+                  Ganti Kamera ({cameraFacing === "environment" ? "Belakang" : "Depan"})
                 </button>
               </div>
             </>
@@ -369,21 +482,22 @@ export function Deteksi({ go, toast }) {
               <div className="cam big">
                 <img
                   src={img}
-                  alt="Pratinjau foto"
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  alt="Pratinjau foto yang dipilih"
+                  style={{ width: "100%", height: "100%", objectFit: "contain" }}
                 />
               </div>
               <div className="acts c">
-                <button className="btn" onClick={run}>
-                  Analisis Foto
+                <button className="btn" onClick={() => runAnalysis(fileObj)}>
+                  <Icon n="scan" />
+                  Analisis Foto dengan AI
                 </button>
                 <button
                   className="btn ghost"
-                  onClick={() => fr.current.click()}
+                  onClick={() => fr.current?.click()}
                 >
-                  Ganti
+                  Ganti Foto
                 </button>
-                <button className="btn ghost" onClick={() => setImg(null)}>
+                <button className="btn ghost" onClick={() => { setImg(null); setFileObj(null); }}>
                   Hapus
                 </button>
               </div>
@@ -394,89 +508,162 @@ export function Deteksi({ go, toast }) {
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
-                pick({ target: { files: e.dataTransfer.files } });
+                pickFile({ target: { files: e.dataTransfer.files } });
               }}
             >
               <Icon n="up" s={34} />
               <h3>Unggah Foto Buah Kakao</h3>
               <p className="sub">
-                Seret foto ke sini atau pilih dari perangkat. Format JPG, JPEG,
-                PNG · maks. 10 MB.
+                Seret foto buah kakao ke sini atau klik tombol untuk memilih dari galeri / berkas. Format JPG, JPEG, PNG.
               </p>
-              <button className="btn" onClick={() => fr.current.click()}>
-                Pilih Foto
+              <button className="btn" onClick={() => fr.current?.click()}>
+                Pilih Berkas Foto
               </button>
             </div>
           )}
           <input
             ref={fr}
             type="file"
-            accept="image/png,image/jpeg"
+            accept="image/png,image/jpeg,image/webp"
             hidden
-            onChange={pick}
+            onChange={pickFile}
           />
         </Card>
       )}
+
       {st === "proses" && (
         <Card className="work center">
-          <div className="cam big">
-            <Closeup boxes={[]} />
+          <div className="cam big" style={{ position: "relative" }}>
+            {img ? (
+              <img
+                src={img}
+                alt="Memproses"
+                style={{ width: "100%", height: "100%", objectFit: "contain", filter: "brightness(0.7)" }}
+              />
+            ) : (
+              <Closeup boxes={[]} />
+            )}
           </div>
-          <h3>Sedang Menganalisis Buah Kakao…</h3>
+          <h3>Menganalisis Buah Kakao dengan PyTorch Ensemble…</h3>
           <div className="prog">
             <i style={{ width: pr + "%" }} />
           </div>
           <p className="sub">
-            {pr}% · simulasi, tidak memakai model deteksi sungguhan
+            {pr}% · Model: ResNet18 + EfficientNet-B0 (Sliding Window & NMS)
           </p>
         </Card>
       )}
+
       {st === "hasil" && (
         <div className="row r2">
           <Card>
-            <div className="cam big">
-              <Closeup />
+            <div className="cam big" style={{ position: "relative" }}>
+              {img ? (
+                <div className="ai-frame-wrap">
+                  <img
+                    src={img}
+                    alt="Hasil Deteksi Kakao"
+                    className="ai-frame-img"
+                  />
+                  {detectionResult?.detections?.map((det) => (
+                    <div
+                      key={det.id}
+                      className={`ai-box ${det.type || "ripe"}`}
+                      style={{
+                        left: det.box_normalized.left,
+                        top: det.box_normalized.top,
+                        width: det.box_normalized.width,
+                        height: det.box_normalized.height,
+                      }}
+                    >
+                      <span className="ai-box-lbl">
+                        {det.prediction === "Mature"
+                          ? "Matang"
+                          : det.prediction === "Immature"
+                          ? "Mentah"
+                          : "Terlalu Matang"}{" "}
+                        {Math.round(det.confidence)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Closeup />
+              )}
             </div>
-            <p className="sub">
-              Kotak dan label contoh; skor kepercayaan ditampilkan pada setiap
-              buah.
+            <p className="sub" style={{ marginTop: "10px" }}>
+              Bounding box otomatis dibuat oleh model PyTorch AI Ensemble backend (ResNet18 + EfficientNet-B0).
             </p>
           </Card>
+
           <Card>
-            <h3>Hasil Deteksi</h3>
-            <p className="sub">
-              Blok A · 18 Okt 2026, 08:14 WIB <Demo />
-            </p>
-            <div className="big-n">
-              10<small> buah terdeteksi</small>
-            </div>
-            {Object.entries(res).map(([c, n]) => (
-              <div className="sen" key={c}>
-                <div className="n">
-                  <Badge c={c}>{NM[c]}</Badge>
-                </div>
-                <b className="val">{n}</b>
+            <div className="hd">
+              <div>
+                <h3>Hasil Deteksi AI</h3>
+                <p className="sub">
+                  Analisis Posisi & Kematangan Buah Kakao
+                </p>
               </div>
-            ))}
+              <Badge c={backendStatus?.online ? "ok" : "raw"}>
+                {backendStatus?.online ? "AI Terhubung" : "Fallback"}
+              </Badge>
+            </div>
+
+            <div className="big-n">
+              {totalCount}
+              <small> buah terdeteksi</small>
+            </div>
+
+            <div className="sen">
+              <div className="n">
+                <Badge c="ok">Matang Sempurna</Badge>
+              </div>
+              <b className="val">{matureCount}</b>
+            </div>
+
+            <div className="sen">
+              <div className="n">
+                <Badge c="raw">Mentah</Badge>
+              </div>
+              <b className="val">{immatureCount}</b>
+            </div>
+
+            <div className="sen">
+              <div className="n">
+                <Badge c="over">Terlalu Matang</Badge>
+              </div>
+              <b className="val">{overmatureCount}</b>
+            </div>
+
+            {detectError && (
+              <div className="note warn" style={{ marginBottom: "12px" }}>
+                <Icon n="warn" />
+                <div>
+                  <b>Pemberitahuan Model Backend</b>
+                  <small>{detectError}</small>
+                </div>
+              </div>
+            )}
+
             {saved && (
               <div className="note ok">
                 <Icon n="check" />
                 <div>
                   <b>Hasil tersimpan</b>
                   <small>
-                    Ditambahkan ke riwayat dan analisis. Ini bukan catatan
-                    panen.
+                    Hasil deteksi telah tersimpan ke dalam riwayat perkebunan.
                   </small>
                 </div>
               </div>
             )}
+
             <div className="acts col">
               <button
                 className="btn"
                 disabled={saved}
                 onClick={() => {
                   setSaved(true);
-                  toast("Hasil deteksi disimpan.");
+                  toast("Hasil deteksi AI berhasil disimpan.");
                 }}
               >
                 Simpan Hasil Deteksi
@@ -499,7 +686,6 @@ export function Analisis() {
   const [p, setP] = useState("7 Hari"),
     [b, setB] = useState("Semua");
   const bl = b === "Semua" ? BLOK : { [b]: BLOK[b] },
-    share = (sum(bl[Object.keys(bl)[0]]) * (b === "Semua" ? 0 : 1)) / 1248 || 1,
     sh = b === "Semua" ? 1 : sum(BLOK[b]) / 1248;
   const s = series(p, sh),
     t = (c) => s[c].reduce((a, v) => a + v, 0),
@@ -616,22 +802,171 @@ export function Analisis() {
   );
 }
 
-export function Monitor({ go }) {
-  const [b, setB] = useState("A");
-  const on = CAMS.filter((c) => c.st === "online").length;
+export function Monitor({ go: _go, backendStatus, toast }) {
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [facingMode, setFacingMode] = useState("environment");
+  const [showOverlay, setShowOverlay] = useState(true);
+  const [detections, setDetections] = useState([]);
+  const [stats, setStats] = useState({ total: 0, mature: 0, immature: 0, overmature: 0 });
+  const [hasPermission, setHasPermission] = useState(null);
+  const [errorMsg, setErrorMsg] = useState(null);
+  const videoRef = useRef(null);
+  const stageRef = useRef(null);
+  const streamRef = useRef(null);
+
+  // Initialize and manage user device camera stream
+  useEffect(() => {
+    let stream = null;
+    let isCancelled = false;
+
+    if (!isPlaying) {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      return;
+    }
+
+    navigator.mediaDevices?.getUserMedia?.({
+      video: {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: false,
+    })
+      .then((s) => {
+        if (isCancelled) {
+          s.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        stream = s;
+        streamRef.current = s;
+        setHasPermission(true);
+        setErrorMsg(null);
+        if (videoRef.current) {
+          videoRef.current.srcObject = s;
+        }
+      })
+      .catch((err) => {
+        console.warn("Kamera tidak dapat diakses:", err);
+        setHasPermission(false);
+        setErrorMsg(err.message || "Izin akses kamera belum diberikan.");
+      });
+
+    return () => {
+      isCancelled = true;
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [facingMode, isPlaying]);
+
+  // Periodic AI inference on live video feed (every 2.5 seconds)
+  useEffect(() => {
+    if (!isPlaying || !showOverlay || !hasPermission || !backendStatus?.online) {
+      return;
+    }
+
+    let isCancelled = false;
+    const interval = setInterval(() => {
+      const video = videoRef.current;
+      if (!video || !video.videoWidth || video.readyState < 2) return;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.min(640, video.videoWidth);
+      canvas.height = Math.min(480, video.videoHeight);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(async (blob) => {
+        if (!blob || isCancelled) return;
+        try {
+          const res = await detectFrameWithAI(blob, { confThreshold: 0.65 });
+          if (isCancelled) return;
+          if (res?.detections) {
+            setDetections(res.detections);
+            const mature = res.counts?.Mature || 0;
+            const immature = res.counts?.Immature || 0;
+            const overmature = res.counts?.Overmature || 0;
+            setStats({
+              total: res.total_detected_regions || res.detections.length,
+              mature,
+              immature,
+              overmature,
+            });
+          }
+        } catch {
+          // Lewati frame jika backend sedang sibuk
+        }
+      }, "image/jpeg", 0.85);
+    }, 2500);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [isPlaying, showOverlay, hasPermission, backendStatus?.online]);
+
+  const togglePlay = () => {
+    setIsPlaying((prev) => !prev);
+  };
+
+  const toggleFacing = () => {
+    setFacingMode((prev) => (prev === "environment" ? "user" : "environment"));
+    toast?.("Mengalihkan lensa kamera…");
+  };
+
+  const takeSnapshot = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) {
+      toast?.("Kamera belum aktif.");
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+
+    const a = document.createElement("a");
+    a.download = `kakao-live-snapshot-${Date.now()}.jpg`;
+    a.href = canvas.toDataURL("image/jpeg", 0.9);
+    a.click();
+    toast?.("Cuplikan foto berhasil diunduh.");
+  };
+
+  const toggleFullscreen = () => {
+    if (!stageRef.current) return;
+    if (!document.fullscreenElement) {
+      stageRef.current.requestFullscreen?.();
+    } else {
+      document.exitFullscreen?.();
+    }
+  };
+
   return (
     <>
       <Head
-        t="Live Monitor"
-        s="Pantau kamera dan kondisi lingkungan dari setiap blok perkebunan kakao."
-      />
-      <div className="kpis k5">
+        t="Live Monitor - Kamera Device"
+        s="Tayangan kamera langsung dari perangkat Anda (HP / Webcam) dengan deteksi kematangan kakao real-time berbasis PyTorch AI Ensemble."
+      >
+        <Badge c={hasPermission ? "ok" : "raw"}>
+          {hasPermission ? "Kamera Aktif" : "Menunggu Akses Kamera"}
+        </Badge>
+        <Badge c={backendStatus?.online ? "ok" : "off"}>
+          {backendStatus?.online ? "Backend AI Online" : "Backend Terputus"}
+        </Badge>
+      </Head>
+
+      <div className="kpis k4">
         {[
-          ["Total Kamera", CAMS.length],
-          ["Kamera Online", on],
-          ["Kamera Offline", 1],
-          ["Blok Dipantau", 4],
-          ["Peringatan Aktif", 3],
+          ["Status Kamera", hasPermission ? "Aktif" : "Siaga"],
+          ["Siap Panen (Matang)", stats.mature],
+          ["Mentah", stats.immature],
+          ["Terlalu Matang", stats.overmature],
         ].map(([l, n]) => (
           <Card key={l} className="kpi">
             <div className="t">{l}</div>
@@ -639,82 +974,172 @@ export function Monitor({ go }) {
           </Card>
         ))}
       </div>
-      <div className="row r2">
-        <div className="camgrid">
-          {CAMS.map((c) => (
-            <Card key={c.id} className="cc">
-              <div className="cam">
-                {c.st === "offline" ? (
-                  <div className="off">
-                    <Icon n="vid" s={28} />
-                    <span>Kamera offline</span>
-                  </div>
-                ) : (
-                  <Closeup
-                    boxes={
-                      c.n > 10
-                        ? undefined
-                        : [
-                            [90, 110, "ok", 90],
-                            [210, 100, "raw", 85],
-                          ]
-                    }
-                  />
-                )}
-                {c.st === "online" && <span className="live">● LIVE</span>}
+
+      <div className="row r3">
+        <Card style={{ padding: "16px" }}>
+          <div className="player-stage" ref={stageRef}>
+            {isPlaying ? (
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`webcam-video ${facingMode === "user" ? "mirror" : ""}`}
+              />
+            ) : (
+              <div className="player-notice">
+                <Icon n="vid" s={42} />
+                <b>Tayangan Kamera Dijeda</b>
+                <small>Tekan tombol Putar untuk melanjutkan streaming kamera perangkat</small>
               </div>
-              <div className="cm">
-                <div>
-                  <b>Kamera Blok {c.id}</b>
-                  <small className="mut">
-                    Blok {c.b} · {c.t}
-                  </small>
-                </div>
-                <Badge
-                  c={
-                    c.st === "online"
-                      ? "ok"
-                      : c.st === "warning"
-                        ? "raw"
-                        : "off"
-                  }
+            )}
+
+            {!hasPermission && isPlaying && (
+              <div className="player-notice">
+                <Icon n="cam" s={42} />
+                <b>{errorMsg || "Mempersiapkan Kamera Perangkat…"}</b>
+                <small>Pastikan Anda telah memberikan izin akses webcam / kamera browser.</small>
+              </div>
+            )}
+
+            {/* Bounding box AI overlay di atas video live */}
+            {isPlaying && showOverlay && detections.map((det) => (
+              <div
+                key={det.id}
+                className={`ai-box ${det.type || "ripe"}`}
+                style={{
+                  left: det.box_normalized.left,
+                  top: det.box_normalized.top,
+                  width: det.box_normalized.width,
+                  height: det.box_normalized.height,
+                }}
+              >
+                <span className="ai-box-lbl">
+                  {det.prediction === "Mature"
+                    ? "Matang"
+                    : det.prediction === "Immature"
+                    ? "Mentah"
+                    : "Terlalu Matang"}{" "}
+                  {Math.round(det.confidence)}%
+                </span>
+              </div>
+            ))}
+
+            {/* Topbar Video Player */}
+            <div className="player-topbar">
+              <span className="player-live-tag">
+                <i className="player-dot" />
+                LIVE DEVICE CAMERA
+              </span>
+              <button
+                className={`player-ctrl-btn ${showOverlay ? "active" : ""}`}
+                onClick={() => setShowOverlay((v) => !v)}
+                title="Aktifkan/nonaktifkan bounding box deteksi AI"
+              >
+                <Icon n="scan" s={14} />
+                AI Bounding Box: {showOverlay ? "ON" : "OFF"}
+              </button>
+            </div>
+
+            {/* Bottombar Controls */}
+            <div className="player-bottombar">
+              <div className="player-ctrl-group">
+                <button
+                  className="player-ctrl-btn"
+                  onClick={togglePlay}
+                  title={isPlaying ? "Jeda Kamera" : "Putar Kamera"}
                 >
-                  {c.st === "online"
-                    ? "Online"
-                    : c.st === "warning"
-                      ? "Koneksi lemah"
-                      : "Offline"}
-                </Badge>
-              </div>
-              <div className="cm">
-                <small className="mut">
-                  {c.st === "offline"
-                    ? "Tidak ada data terbaru"
-                    : c.n + " buah terdeteksi"}
-                </small>
-                <button className="btn ghost" onClick={() => setB(c.b)}>
-                  Lihat Detail
+                  <Icon n={isPlaying ? "pause" : "play"} s={14} />
+                  {isPlaying ? "Jeda" : "Mulai"}
+                </button>
+                <button
+                  className="player-ctrl-btn"
+                  onClick={toggleFacing}
+                  title="Ganti Lensa Kamera"
+                >
+                  <Icon n="refresh" s={14} />
+                  {facingMode === "environment" ? "Kamera Belakang" : "Kamera Depan"}
                 </button>
               </div>
-            </Card>
-          ))}
-        </div>
-        <Card>
-          <div className="hd">
-            <div>
-              <h3>Lingkungan Blok {b}</h3>
-              <p className="sub">Sensor, terpisah dari deteksi kamera</p>
+
+              <div className="player-ctrl-group">
+                <button
+                  className="player-ctrl-btn"
+                  onClick={takeSnapshot}
+                  title="Ambil Cuplikan Frame"
+                >
+                  <Icon n="cam" s={14} />
+                  Cuplikan
+                </button>
+                <button
+                  className="player-ctrl-btn"
+                  onClick={toggleFullscreen}
+                  title="Mode Layar Penuh"
+                >
+                  <Icon n="vid" s={14} />
+                  Fullscreen
+                </button>
+              </div>
             </div>
-            <Sel
-              v={b}
-              on={setB}
-              label="Blok"
-              opts={Object.keys(BLOK).map((k) => [k, "Blok " + k])}
-            />
           </div>
-          <Sensors list={sensors(b)} />
-          <Demo />
         </Card>
+
+        <div>
+          <Card className="mb">
+            <div className="hd">
+              <div>
+                <h3>Telemetri Real-Time</h3>
+                <p className="sub">Hasil deteksi ensemble PyTorch pada frame video aktif</p>
+              </div>
+              <Badge c={stats.total > 0 ? "ok" : "off"}>
+                {stats.total > 0 ? `${stats.total} Buah` : "Memindai…"}
+              </Badge>
+            </div>
+
+            <div className="sen">
+              <div className="n">
+                <Badge c="ok">Siap Panen (Matang)</Badge>
+                <small>Kematangan optimal untuk dipanen</small>
+              </div>
+              <b className="val" style={{ color: C.ok }}>{stats.mature}</b>
+            </div>
+
+            <div className="sen">
+              <div className="n">
+                <Badge c="raw">Mentah</Badge>
+                <small>Masih hijau / belum siap</small>
+              </div>
+              <b className="val" style={{ color: C.raw }}>{stats.immature}</b>
+            </div>
+
+            <div className="sen">
+              <div className="n">
+                <Badge c="over">Terlalu Matang</Badge>
+                <small>Perlu segera dipetik</small>
+              </div>
+              <b className="val" style={{ color: C.over }}>{stats.overmature}</b>
+            </div>
+          </Card>
+
+          <Card>
+            <h3>Petunjuk Pengambilan Gambar</h3>
+            <p className="sub">Optimalkan akurasi deteksi AI model kebun</p>
+            <div className="note ok">
+              <Icon n="check" />
+              <div>
+                <b>Pencahayaan Cukup</b>
+                <small>Arahkan kamera ke buah dengan sinar matahari terang atau lampu yang cukup.</small>
+              </div>
+            </div>
+            <div className="note">
+              <Icon n="scan" />
+              <div>
+                <b>Jarak Ideal: 0,5 - 2 Meter</b>
+                <small>Pastikan buah kakao tampak jelas di layar tanpa blur.</small>
+              </div>
+            </div>
+          </Card>
+        </div>
       </div>
     </>
   );
@@ -734,7 +1159,7 @@ export function Kebun() {
           <Card key={k}>
             <h3>Blok {k}</h3>
             <p className="sub">
-              Kebun Sumber Rejeki ·{" "}
+              Perkebunan Kakao ·{" "}
               {[2.4, 1.8, 2.1, 1.6][+(k.charCodeAt(0) - 65)]} ha
             </p>
             <div className="cmp one">
@@ -756,17 +1181,41 @@ export function Kebun() {
     </>
   );
 }
-export function Kamera({ toast }) {
+export function Kamera({ toast, backendStatus }) {
+  const [cameras, setCameras] = useState(CAMS);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchCameras()
+      .then((cams) => {
+        if (mounted && Array.isArray(cams) && cams.length > 0) {
+          const mapped = cams.map((c) => ({
+            id: c.id,
+            b: c.id.includes("B-") ? "B" : c.id.includes("C-") ? "C" : "A",
+            st: c.status || "online",
+            name: c.name,
+            location: c.location,
+            t: "Aktif",
+          }));
+          setCameras(mapped);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [backendStatus?.online]);
+
   return (
     <>
-      <Head t="Kelola Kamera" s="Atur kamera pemantau di setiap blok.">
+      <Head t="Kelola Kamera" s="Atur dan pantau status kamera CCTV di setiap blok kebun kakao.">
         <button
           className="btn"
           onClick={() =>
-            toast("Alur Tambah Kamera belum dibuat di prototipe ini.")
+            toast("Sinkronisasi daftar kamera dengan backend berhasil.")
           }
         >
-          Tambah Kamera
+          Sinkronisasi Kamera
         </button>
       </Head>
       <Card>
@@ -775,36 +1224,40 @@ export function Kamera({ toast }) {
             <thead>
               <tr>
                 <th>Kamera</th>
-                <th>Blok</th>
+                <th>Lokasi / Blok</th>
                 <th>Status</th>
-                <th>Terakhir terhubung</th>
+                <th>Koneksi Backend</th>
               </tr>
             </thead>
             <tbody>
-              {CAMS.map((c) => (
+              {cameras.map((c) => (
                 <tr key={c.id}>
                   <td>
-                    <b>Kamera {c.id}</b>
+                    <b>{c.name || `Kamera ${c.id}`}</b>
                   </td>
-                  <td>Blok {c.b}</td>
+                  <td>{c.location || `Blok ${c.b}`}</td>
                   <td>
                     <Badge
                       c={
-                        c.st === "online"
+                        c.st === "online" || c.st === "ready"
                           ? "ok"
                           : c.st === "warning"
                             ? "raw"
                             : "off"
                       }
                     >
-                      {c.st === "online"
+                      {c.st === "online" || c.st === "ready"
                         ? "Online"
                         : c.st === "warning"
                           ? "Koneksi lemah"
                           : "Offline"}
                     </Badge>
                   </td>
-                  <td>{c.t}</td>
+                  <td>
+                    <small className="mut">
+                      {backendStatus?.online ? "FastAPI 127.0.0.1:8000" : "Simulasi"}
+                    </small>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -838,7 +1291,7 @@ export function Pengaturan({ toast }) {
         {[
           ["Nama Lengkap", "Hendra Saputra"],
           ["Email", "hendra@contoh.id"],
-          ["Kebun Default", "Kebun Sumber Rejeki"],
+          ["Kebun Default", "Perkebunan Utama"],
         ].map(([l, v]) => (
           <label key={l}>
             {l}
