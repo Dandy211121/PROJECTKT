@@ -2,16 +2,19 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const WS_BASE_URL = import.meta.env.VITE_WS_URL || "ws://127.0.0.1:8000";
 
 /**
- * Memeriksa status kesehatan backend
+ * Memeriksa status kesehatan backend FastAPI
  */
 export async function checkBackendHealth() {
   try {
-    const res = await fetch(`${API_BASE_URL}/`, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) return { online: false };
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(`${API_BASE_URL}/`, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) return { online: false, error: `HTTP ${res.status}` };
     const data = await res.json();
     return { online: true, data };
-  } catch {
-    return { online: false };
+  } catch (err) {
+    return { online: false, error: err.message };
   }
 }
 
@@ -19,9 +22,12 @@ export async function checkBackendHealth() {
  * Mengambil ringkasan analitik kematangan dari backend
  */
 export async function fetchAnalyticsSummary() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
   const res = await fetch(`${API_BASE_URL}/api/v1/analytics/summary`, {
-    signal: AbortSignal.timeout(5000),
+    signal: controller.signal,
   });
+  clearTimeout(timeoutId);
   if (!res.ok) {
     throw new Error(`Gagal mengambil analitik: ${res.statusText}`);
   }
@@ -32,9 +38,12 @@ export async function fetchAnalyticsSummary() {
  * Mengambil daftar kamera CCTV terdaftar dari backend
  */
 export async function fetchCameras() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
   const res = await fetch(`${API_BASE_URL}/api/v1/cctv/cameras`, {
-    signal: AbortSignal.timeout(5000),
+    signal: controller.signal,
   });
+  clearTimeout(timeoutId);
   if (!res.ok) {
     throw new Error(`Gagal mengambil daftar kamera: ${res.statusText}`);
   }
@@ -42,23 +51,23 @@ export async function fetchCameras() {
 }
 
 /**
- * URL endpoint live streaming video MJPEG teranotasi AI
+ * Mendapatkan URL live streaming video CCTV MJPEG teranotasi AI
  */
 export function getCctvStreamUrl(cameraId) {
   return `${API_BASE_URL}/api/v1/cctv/stream/${encodeURIComponent(cameraId)}`;
 }
 
 /**
- * Mengirim gambar frame webcam/hp ke backend untuk deteksi ensemble PyTorch (Sliding Window + NMS)
+ * Mengirim gambar frame webcam atau foto file ke backend untuk deteksi ensemble PyTorch (Sliding Window + NMS)
  */
-export async function detectFrameWithAI(imageBlob, {
+export async function detectFrameWithAI(imageBlobOrFile, {
   confThreshold = 0.70,
   iouThreshold = 0.35,
   cropSize = 280,
   stride = 140,
 } = {}) {
   const formData = new FormData();
-  formData.append("file", imageBlob, "frame.jpg");
+  formData.append("file", imageBlobOrFile, "frame.jpg");
 
   const query = new URLSearchParams({
     conf_threshold: String(confThreshold),
@@ -73,7 +82,35 @@ export async function detectFrameWithAI(imageBlob, {
   });
 
   if (!res.ok) {
-    throw new Error(`Gagal deteksi frame: ${res.statusText}`);
+    const errorText = await res.text();
+    throw new Error(`Gagal deteksi frame: ${res.statusText} (${errorText})`);
+  }
+
+  return res.json();
+}
+
+/**
+ * #3. Alias kompatibilitas mundur deteksi ensemble sliding window
+ */
+export async function predictSlidingWindowEnsemble(imageBlobOrFile, options = {}) {
+  return detectFrameWithAI(imageBlobOrFile, options);
+}
+
+/**
+ * #7. Mengunggah foto snapshot manual dan menghasilkan log deteksi AI
+ */
+export async function saveCctvSnapshot(imageBlobOrFile) {
+  const formData = new FormData();
+  formData.append("file", imageBlobOrFile, "snapshot.jpg");
+
+  const res = await fetch(`${API_BASE_URL}/api/v1/cctv/snapshot`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Gagal menyimpan snapshot: ${res.statusText} (${errorText})`);
   }
 
   return res.json();
@@ -95,7 +132,7 @@ export function connectCameraWebSocket(cameraId, onData, onError) {
           const parsed = JSON.parse(event.data);
           onData?.(parsed);
         } catch (e) {
-          console.error("Gagal parse data telemetry WebSocket:", e);
+          console.error("Gagal memproses data telemetry WebSocket:", e);
         }
       };
       ws.onerror = (err) => {
@@ -103,7 +140,6 @@ export function connectCameraWebSocket(cameraId, onData, onError) {
       };
       ws.onclose = () => {
         if (!isClosed) {
-          // Reconnect otomatis setelah 3 detik
           setTimeout(connect, 3000);
         }
       };
